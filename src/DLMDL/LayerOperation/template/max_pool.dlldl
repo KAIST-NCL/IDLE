@@ -1,0 +1,176 @@
+@name: max_pool
+
+@caffe_import:
+    import sys
+    from caffe import layers as L
+    import numpy as np
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+    {
+        "name": "ksize",
+        "mandatory": "both"
+        "source": "layer"
+    },
+    {
+        "name": "stride",
+        "mandatory": "both"
+        "source": "layer"
+    },
+    {
+        "name": "padding",
+        "mandatory": "both",
+        "default": "SAME",
+        "source": "layer"
+    },
+    {
+        "name": "use_global_stats",
+        "mandatory": "both",
+        "default": true,
+        "source": "layer"
+    },
+    {
+        "name": "moving_avg_fraction",
+        "mandatory": "both",
+        "default": 0.999,
+        "source": "layer"
+    },
+    {
+        "name": "epsilon",
+        "mandatory": "both",
+        "default": 1e-5,
+        "source": "layer"
+    },
+    {
+        "name": "is_scale",
+        "mandatory": "both",
+        "default": false,
+        "source": "layer"
+    },
+    {
+        "name": "bias_term",
+        "mandatory": "both",
+        "default": false,
+        "source": "layer"
+    },
+    {
+        "name": "activation",
+        "mandatory": "both",
+        "default": [],
+        "source": "layer"
+    }
+]
+
+@caffe_compile_time:
+     ksize = self.get_attr('ksize')
+    stride = self.get_attr('stride')
+    padding = self.get_attr('padding', self.padding)
+
+    input_ = self.get_input('input')
+    name = self.name
+    indim = self.get_dimension('input')
+    # padding
+    if padding == 'SAME':
+        outdim = [np.ceil(float(indim[i]) / float(stride)) for i in xrange(2)]
+        p = [int(((outdim[i] - 1) * stride + ksize - indim[i])/2) for i in xrange(2)]
+    else:
+        outdim = [np.ceil(float(indim[i] - ksize + 1) / float(stride)) for i in xrange(2)]
+        p = [0, 0]
+    # pool=0: max_pool, pool=1: avr_pool
+    l_max_pool = L.Pooling(input_, name=name, pool=0, kernel_size=ksize, stride=stride, pad_h=p[0], pad_w=p[1])
+
+    ### activation
+    activation = self.get_attr('activation', self.activation)
+    for act in activation:
+        # relu
+        if act == 'relu':
+            l_max_pool = L.ReLU(l_max_pool, name=self.name + '_relu', in_place=True)
+
+        # # dropout
+        # dropout = self.get_attr('dropout')
+        # if dropout is not None:
+        #     layer = L.Dropout(layer, name=self.name + '_dropout', in_place=True, dropout_ratio=dropout)
+
+        # batch normalization
+        elif act == 'batchnorm':
+            use_global_stats = self.get_attr('use_global_stats', self.use_global_stats)
+            moving_average_fraction = self.get_attr('moving_average_fraction', self.moving_average_fraction)
+            epsilon = self.get_attr('epsilon', self.epsilon)
+            l_max_pool = L.BatchNorm(l_max_pool, name=self.name + '_batchnorm',
+                                            use_global_stats=use_global_stats,
+                                            moving_average_fraction=moving_average_fraction, eps=epsilon,
+                                            in_place=True)
+
+            # scale
+            if self.get_attr('is_scale', self.is_scale):
+                bias_term = self.get_attr('bias_term', self.bias_term)
+                l_max_pool = L.Scale(l_max_pool, bias_term=bias_term, in_place=True)
+
+    # TODO: output이름 DLMDL과 맞출 지 고민
+    # self.set_output('output', l_max_pool)
+    # self.set_dimension('output', outdim)
+    for output_name in self.outputs_list:
+        self.set_output(output_name, l_max_pool)
+        self.set_dimension(output_name, outdim)
+
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(input_, ksize, stride, padding, activation):
+        ksize = [1, ksize, ksize, 1]
+        data_format = self.get_attr('data_format', self.data_format)
+        if data_format == 'NCHW':
+            strides = [1, 1, stride, stride]
+        else:
+            strides = [1, stride, stride, 1]
+        indim = self.get_dimension('input')
+        maxpool_ = tf.nn.max_pool(input_, ksize, strides, padding, data_format=data_format)
+
+        for act in activation:
+            if act == 'relu':
+                maxpool_ = tf.nn.relu(maxpool_)
+            else:
+                if act == 'batchnorm':
+                    is_training = self.get_attr('use_global_stats', self.use_global_stats)
+                    decay = self.get_attr('moving_average_fraction', self.use_average_fraction)
+                    epsilon = self.get_attr('epsilon', self.epsilon)
+                    scale = False
+                    center = False
+                    if self.get_attr('is_scale', self.is_scale) == True:
+                        scale = True
+                        center = self.get_attr('bias_term', self.bias_term)
+                    # batch normalization and sacling activation
+                    maxpool_ = tf.contrib.layers.batch_norm(maxpool_,
+                                                            decay=decay,
+                                                            center=center,
+                                                            scale=scale,
+                                                            epsilon=epsilon,
+                                                            is_training=is_training)
+                # TODO: other activation layer
+                else:
+                    pass
+
+        tf.summary.histogram('activations', maxpool_)
+        outdim = list(maxpool_.get_shape()[i].value for i in xrange(len(maxpool_.get_shape())))
+        self.set_dimension('output', outdim)
+        self.set_output('output', maxpool_)
+
+    ksize = self.get_attr('ksize')
+    stride = self.get_attr('stride')
+    padding = self.get_attr('padding')
+    input_ = self.get_input('input')
+    activation = self.get_attr('activation',self.activation)
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel") != "DP":
+            with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                apiConstructor(input_, ksize, stride, padding, activation)
+        else:
+            apiConstructor(input_, ksize, stride, padding, activation)

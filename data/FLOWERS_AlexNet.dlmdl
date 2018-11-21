@@ -1,0 +1,736 @@
+{
+  "layers": [
+    {
+      "type": "jpeg_input",
+      "name": "Input",
+      "inputs": {},
+      "outputs": [
+        "image",
+        "label"
+      ],
+      "attributes": {
+        "image_size": [
+          256,
+          256,
+          3
+        ],
+        "num_class": 17,
+        "shuffle" : false
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "conv",
+      "name": "Conv1",
+      "inputs": {
+        "input": [
+          "Input.image"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "kernel_size": [11,11],
+        "num_output": 96,
+        "padding": "VALID",
+        "stride": 4,
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        },
+        "lr_mult": 1
+      },
+      "device": "worker0",
+      "coord": [
+        1,
+        1
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU1",
+      "inputs":{
+        "input": [
+          "Conv1.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "lrn",
+      "name": "LRN1",
+      "inputs":{
+        "input": [
+          "ReLU1.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "local_size": 5,
+        "alpha": 0.0001,
+        "beta": 0.75
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "pooling",
+      "name": "Pool1",
+      "inputs": {
+        "input": [
+          "LRN1.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "pool_type": "MAX",
+        "kernel_size": [3,3],
+        "stride": 2,
+        "padding": "VALID"
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "conv",
+      "name": "Conv2",
+      "inputs": {
+        "input": [
+          "Pool1.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "kernel_size": [5,5],
+        "num_output": 192,
+        "stride": 1,
+        "padding": "SAME",
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0.1
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        },
+        "lr_mult": 1
+      },
+      "device": "worker0",
+      "coord": [
+        1,
+        1
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU2",
+      "inputs":{
+        "input": [
+          "Conv2.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "lrn",
+      "name": "LRN2",
+      "inputs":{
+        "input": [
+          "ReLU2.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "local_size": 5,
+        "alpha": 0.0001,
+        "beta": 0.75
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "pooling",
+      "name": "Pool2",
+      "inputs": {
+        "input": [
+          "LRN2.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "pool_type": "MAX",
+        "kernel_size": [3,3],
+        "stride": 2,
+        "padding": "VALID"
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "conv",
+      "name": "Conv3",
+      "inputs": {
+        "input": [
+          "Pool2.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "kernel_size": [3,3],
+        "num_output": 384,
+        "stride": 1,
+        "padding": "SAME",
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        },
+        "lr_mult": 1
+      },
+      "device": "worker0",
+      "coord": [
+        1,
+        1
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU3",
+      "inputs":{
+        "input": [
+          "Conv3.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "conv",
+      "name": "Conv4",
+      "inputs": {
+        "input": [
+          "ReLU3.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "kernel_size": [3,3],
+        "num_output": 384,
+        "stride": 1,
+        "padding": "SAME",
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0.1
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        },
+        "lr_mult": 1
+      },
+      "device": "worker0",
+      "coord": [
+        1,
+        1
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU4",
+      "inputs":{
+        "input": [
+          "Conv4.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "conv",
+      "name": "Conv5",
+      "inputs": {
+        "input": [
+          "ReLU4.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "kernel_size": [3,3],
+        "num_output": 256,
+        "stride": 1,
+        "padding": "SAME",
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0.1
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        },
+        "lr_mult": 1
+      },
+      "device": "worker0",
+      "coord": [
+        1,
+        1
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU5",
+      "inputs":{
+        "input": [
+          "Conv5.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "pooling",
+      "name": "Pool5",
+      "inputs": {
+        "input": [
+          "ReLU5.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "pool_type": "MAX",
+        "kernel_size": [3,3],
+        "stride": 2,
+        "padding": "VALID"
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "fc",
+      "name": "Fc6",
+      "inputs": {
+        "input": [
+          "Pool5.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "num_output": 512,
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.005
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0.1
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        }
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU6",
+      "inputs":{
+        "input": [
+          "Fc6.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "dropout",
+      "name": "Dropout6",
+      "inputs":{
+        "input":[
+          "ReLU6.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "dropout_ratio": 0.5
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "fc",
+      "name": "Fc7",
+      "inputs": {
+        "input": [
+          "Dropout6.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "num_output": 512,
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.005
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0.1
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        }
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    },
+    {
+      "type": "relu",
+      "name": "ReLU7",
+      "inputs":{
+        "input": [
+          "Fc7.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "slope": 0
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "dropout",
+      "name": "Dropout7",
+      "inputs":{
+        "input":[
+          "ReLU7.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "dropout_ratio": 0.5
+      },
+      "device": "worker0",
+      "coord": [
+        2,
+        2
+      ]
+    },
+    {
+      "type": "fc",
+      "name": "Fc8",
+      "inputs": {
+        "input": [
+          "Dropout7.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "num_output": 17,
+        "bias_term": true,
+        "initializer": {
+          "weight": {
+            "type": "normal",
+            "mean": 0,
+            "std": 0.01
+          },
+          "bias": {
+            "type": "constant",
+            "value": 0
+          }
+        },
+        "regularizer": {
+          "type": "L2",
+          "weight": 0.0005,
+          "bias": 0
+        }
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    },
+    {
+      "type": "softmaxwithloss",
+      "name": "Loss9",
+      "inputs":{
+        "logits":[
+          "Fc8.output"
+        ],
+        "labels":[
+          "Input.label"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+      },
+      "device": "worker0",
+      "coord":[
+        2,
+        2
+      ]
+    },
+    {
+      "type": "accuracy",
+      "name": "Accuracy9",
+      "inputs":{
+        "logits":[
+          "Fc8.output"
+        ],
+        "labels":[
+          "Input.label"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "topk": 1
+      },
+      "device": "worker0",
+      "coord":[
+        3,
+        3
+      ]
+    },
+    {
+      "type": "adam",
+      "name": "Optimizer1",
+      "inputs":{
+        "loss":[
+          "Loss9.output"
+        ]
+      },
+      "outputs":[
+        "output",
+        "global_step"
+      ],
+      "attributes":{
+        "lr":  0.2,
+        "lr_scheduler":{
+          "type": "step",
+          "factor": 0.1,
+          "step": 100000
+        }
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    }
+  ],
+  "learning_option": {
+    "option": "TRAIN",
+    "file_format": "jpg",
+    "data_path": "data/datasets/flowers/train",
+    "label_path": "data/datasets/flowers/train/train_labeling.txt",
+    "checkpoint_path": "output/checkpoint/jpeg_alexnet",
+    "checkpoint_interval": 1000,
+    "batch_size": 16,
+    "iteration": 100000,
+    "train_display": 200,
+    "test_batch_size": 16,
+    "test_iteration": 10,
+    "test_interval": 500,
+    "test_data_path": "data/datasets/flowers/test",
+    "test_label_path": "data/datasets/flowers/test/test_labeling.txt"
+  },
+  "cluster": [
+    {
+      "name": "worker0",
+      "ip": "143.248.146.157:2222",
+      "type": "gpu0",
+      "task": "worker"
+    }
+  ],
+  "createdAt": "2016-12-10T13:17:38.270Z",
+  "updatedAt": "2016-12-10T13:17:38.270Z",
+  "id": 1
+}
+
+

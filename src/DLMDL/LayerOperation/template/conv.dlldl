@@ -1,0 +1,208 @@
+@name: conv
+
+@caffe_import:
+    import sys
+    from caffe import layers as L
+    import numpy as np
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+    {
+        "name": "filter",
+        "mandatory": "both",
+        "source": "layer"
+    },
+    {
+        "name": "stride",
+        "mandatory": "both",
+        "source": "layer"
+    },
+    {
+        "name": "padding",
+        "mandatory": "both",
+        "default": "SAME",
+        "source": "layer"
+    },
+    {
+        "name": "data_format",
+        "mandatory": "tf",
+        "default": "NHWC",
+        "source": "layer"
+    },
+    {
+        "name": "use_cudnn_on_gpu",
+        "mandatory": "tf",
+        "default": true,
+        "source": "layer"
+    },
+    {
+        "name": "use_global_stats",
+        "mandatory": "both",
+        "default": false,
+        "source": "layer"
+    },
+    {
+        "name": "moving_average_fraction",
+        "mandatory": "both",
+        "default": 0.999,
+        "source": "layer"
+    },
+    {
+        "name": "epsilon",
+        "mandatory": "both",
+        "default": 1e-5,
+        "source": "layer"
+    },
+    {
+        "name": "is_scale",
+        "mandatory": "both",
+        "default": false,
+        "source": "layer"
+    },
+    {
+        "name": "bias_term",
+        "mandatory": "both",
+        "default": false,
+        "source": "layer"
+    },
+    {
+        "name": "activation",
+        "mandatory": "both",
+        "default": [],
+        "source": "layer"
+    },
+]
+
+@caffe_compile_time:
+    filter = self.get_attr('filter')
+    stride = self.get_attr('stride')
+    padding = self.get_attr('padding', self.padding)
+    activation = self.get_attr('activation', self.activation)
+
+    input_ = self.get_input('input')
+    indim = self.get_dimension('input')
+    # padding
+    if padding == 'SAME':
+        outdim = [np.ceil(float(indim[i]) / float(stride)) for i in xrange(2)]
+        p = [int(((outdim[i] - 1) * stride + filter[i] - indim[i])/2) for i in xrange(2)]
+    else:
+        outdim = [np.ceril(float(indim[i] - filter[i] + 1) / float(stride)) for i in xrange(2)]
+        p = [0, 0]
+    # weight_filler
+    weight = self.get_attr('weight', 'random_normal').lower()
+    if weight == 'random_normal':
+        weight_filler = {'type': 'gaussian', 'mean': 0, 'std': 1}
+    else: # 'zeroes'
+        weight_filler = {'type': 'constant'}
+    # bias_filler
+    bias = self.get_attr('bias', 'zeroes').lower()
+    if bias == 'random_normal':
+        bias_filler = {'type': 'gaussian', 'mean': 0, 'std': 1}
+    else: # 'zeroes'
+        bias_filler = {'type': 'constant'}
+    layer = L.Convolution(input_, name=self.name, kernel_h=filter[0], kernel_w=filter[1], num_output=filter[3], stride=stride,
+                           pad_h=p[0], pad_w=p[1], weight_filler=weight_filler, bias_filler=bias_filler)
+
+    ### activation
+    for act in activation:
+        # relu
+        if act == 'relu':
+            layer = L.ReLU(layer, name=self.name + '_relu', in_place=True)
+
+        # # dropout
+        # dropout = self.get_attr('dropout')
+        # if dropout is not None:
+        #     layer = L.Dropout(layer, name=self.name + '_dropout', in_place=True, dropout_ratio=dropout)
+
+        # batch normalization
+        elif act == 'batchnorm':
+            use_global_stats = self.get_attr('use_global_stats', self.use_global_stats)
+            decay = self.get_attr('moving_average_fraction', self.moving_average_fraction)
+            epsilon = self.get_attr('epsilon', self.epsilon)
+            layer = L.BatchNorm(layer, name=self.name + '_batchnorm', use_global_stats=use_global_stats,
+                                          moving_average_fraction=moving_average_fraction, eps=epsilon, in_place=True)
+
+            # scale
+            if self.get_attr('is_scale', self.is_scale):
+                bias_term = self.get_attr('bias_term', self.bias_term)
+                layer = L.Scale(layer, bias_term=bias_term, in_place=True)
+
+
+    # TODO: output이름 DLMDL과 맞출 지 고민
+    # self.set_output('output', layer)
+    # self.set_dimension('output', outdim)
+    for output_name in self.outputs_list:
+        self.set_output(output_name, layer)
+        self.set_dimension(output_name, outdim)
+
+
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(input_, filter, stride, padding, activation, data_format, use_cudnn_on_gpu, mean, stddev,
+                       value):
+        if data_format == 'NCHW':
+            strides = [1, 1, stride, stride]
+        else:
+            strides = [1, stride, stride, 1]
+        kernel = tf.Variable(
+            tf.truncated_normal([filter[0], filter[1], filter[2], filter[3]], dtype=tf.float32, mean=mean,
+                                stddev=stddev, name='weights'))
+        conv = tf.nn.conv2d(input_, kernel, strides, padding, use_cudnn_on_gpu=use_cudnn_on_gpu,
+                            data_format=data_format)
+        biases = tf.Variable(tf.constant(value, shape=[filter[3]], dtype=tf.float32), name='biases')
+        conv_ = tf.reshape(tf.nn.bias_add(conv, biases, data_format=data_format), conv.get_shape())
+        if len(activation) != 0:
+            for act in activation:
+                if act == 'relu':
+                    conv_ = tf.nn.relu(conv_)
+                else:
+                    if act == 'batchnorm':
+                        is_training = self.get_attr('use_global_stats', self.use_gloabl_stats)
+                        decay = self.get_attr('moving_average_fraction', self.moving_average_fraction)
+                        epsilon = self.get_attr('epsilon', self.epsilon)
+                        scale = False
+                        center = False
+                        if self.get_attr('is_scale', self.is_scale) == True:
+                            scale = True
+                            center = self.get_attr('bias_term', self.bias_term)
+                        # batch normalization and sacling activation
+                        conv_ = tf.contrib.layers.batch_norm(conv_,
+                                                             decay=decay,
+                                                             center=center,
+                                                             scale=scale,
+                                                             epsilon=epsilon,
+                                                             is_training=is_training)
+                    # TODO: other activation layer
+                    else:
+                        pass
+        tf.summary.histogram('activations', conv_)
+        outdim = list(conv_.get_shape()[i].value for i in xrange(len(conv_.get_shape())))
+        self.set_dimension('output', outdim)
+        self.set_output('output', conv_)
+
+    filter = self.get_attr('filter')
+    stride = self.get_attr('stride')
+    padding = self.get_attr('padding')
+    activation = self.get_attr('activation',self.activation)
+    data_format = self.get_attr('data_format', self.data_format)
+    use_cudnn_on_gpu = self.get_attr('use_cudnn_on_gpu', self.use_cudnn_on_gpu)
+    mean = self.get_attr('mean', 0) # not added
+    stddev = self.get_attr('stddev', 1e-2) # not added
+    value = self.get_attr('value', 0.0) # not added
+    indim = self.get_dimension('input')
+    input_ = self.get_input('input')
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+            with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                apiConstructor(input_, filter, stride, padding, activation, data_format, use_cudnn_on_gpu, mean, stddev, value)
+        else:
+            apiConstructor(input_, filter, stride, padding, activation, data_format, use_cudnn_on_gpu, mean, stddev, value)

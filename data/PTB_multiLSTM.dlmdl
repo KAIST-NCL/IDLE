@@ -1,0 +1,244 @@
+{
+  "layers": [
+    {
+      "type": "ptb_input",
+      "name": "Input",
+      "inputs": {},
+      "outputs": [
+        "text",
+        "targets"
+      ],
+      "attributes": {
+        "num_steps": 20,
+        "hidden_size": 200
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "dropout",
+      "name": "Dropout1",
+      "inputs": {
+        "input":[
+          "Input.text"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "dropout_ratio" : 0.0
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "lstm",
+      "name": "Lstm1",
+      "inputs":{
+        "input": [
+          "Dropout1.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "forget_bias": 0,
+        "state_is_tuple": true
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "dropout_wrapper",
+      "name": "Dropout_wrapper1",
+      "inputs":{
+        "input": [
+          "Lstm1.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "input_dropout_ratio": 0,
+        "output_dropout_ratio": 0,
+        "state_dropout_ratio": 0
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "multi_cells",
+      "name": "Multi_cells1",
+      "inputs":{
+        "input": [
+          "Dropout_wrapper1.output"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "num_cells": 2
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "static_rnn",
+      "name": "Static_rnn1",
+      "inputs":{
+        "input":[
+          "Multi_cells1.output"
+        ]
+      },
+      "outputs":[
+        "output",
+        "state"
+      ],
+      "attributes":{
+        "initial_state": "ZERO"
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "fc",
+      "name": "Fc1",
+      "inputs":{
+        "input": [
+          "Static_rnn1.output"
+        ]
+      },
+      "outputs":[
+        "output"
+        ],
+      "attributes":{
+        "num_output": 10000
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "sequenceloss",
+      "name": "Sequenceloss1",
+      "inputs": {
+        "logits": [
+          "Fc1.output"
+        ],
+        "targets": [
+          "Input.targets"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "weights": 1.0
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "perplexity",
+      "name": "Perplexity1",
+      "inputs": {
+        "logits": [
+          "Fc1.output"
+        ],
+        "targets": [
+          "Input.targets"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {},
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "sgd",
+      "name": "Optimizer1",
+      "inputs":{
+        "loss":[
+          "Sequenceloss1.output"
+        ]
+      },
+      "outputs":[
+        "output",
+        "global_step"
+      ],
+      "attributes":{
+        "lr":  0.5,
+        "clip_grad": 5,
+        "lr_scheduler":{
+          "type": "step",
+          "factor": 0.5,
+          "step": 6750
+        }
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    }
+  ],
+  "learning_option": {
+    "option": "TRAIN",
+    "file_format": "text",
+    "data_path": "data/datasets/ptb",
+    "checkpoint_path": "output/checkpoint/ptb_multilstm",
+    "checkpoint_interval": 10000,
+    "batch_size": 20,
+    "iteration": 225000,
+    "train_display": 200,
+    "test_batch_size": 20,
+    "test_iteration": 1000,
+    "test_interval": 2250,
+    "test_data_path": "data/datasets/ptb"
+  },
+  "cluster": [
+    {
+      "name": "worker0",
+      "ip": "143.248.146.157:2222",
+      "type": "gpu0",
+      "task": "worker"
+    }
+  ],
+  "createdAt": "2016-12-10T13:17:38.270Z",
+  "updatedAt": "2016-12-10T13:17:38.270Z",
+  "id": 1
+}
+
+

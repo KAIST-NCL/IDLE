@@ -1,0 +1,51 @@
+@name: accuracy
+
+@caffe_import:
+    import sys
+    from caffe import layers as L
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+    {
+        "name": "topk",
+        "mandatory": "both",
+        "default": 1,
+        "source": "layer"
+    }
+]
+
+@caffe_compile_time:
+    logits = self.get_input('logits')
+    labels = self.get_input('labels')
+    topk = self.get_attr('topk', self.topk)
+    layer = L.Accuracy(logits, labels, name=self.name, accuracy_param=dict(top_k=topk))
+
+    for output_name in self.outputs_list:
+        self.set_output(output_name, layer)
+
+
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(logits, labels, topk):
+        accuracy = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, labels, k=topk), tf.float32))
+        tf.summary.scalar('accuracy', accuracy)
+        self.set_output('output', accuracy)
+
+    logits = self.get_input('logits')
+    labels = tf.cast(self.get_input('labels'), tf.int64)
+    topk = self.get_attr('topk', self.topk)
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+             with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                apiConstructor(logits, labels, topk)
+        else:
+            apiConstructor(logits, labels, topk)

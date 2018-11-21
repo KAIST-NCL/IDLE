@@ -1,0 +1,55 @@
+@name: adagradoptimizer
+
+@caffe_import:
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+	{
+        "name": "initial_accumulator_value",
+        "mandatory": "tf",
+        "default": 0.1,
+        "source": "opt"
+    }
+]
+
+@caffe_compile_time:
+    learning_rate = learning_option.get("learning_rate")
+    #initial_accumulator_value = learning_option.get("initial_accumulator_value", self.initial_accumulator_value)
+
+    for key in ['learning_rate', 'initial_accumulator_value']:
+        try:
+            del learning_option[key]
+        except KeyError:
+            pass
+    learning_option['base_lr'] = float(learning_rate)
+    learning_option['type'] = 'AdaGrad'
+
+
+@caffe_run_time:
+	pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(input_, learning_rate, initial_accumulator_value):
+        global_step = tf.train.get_or_create_global_step()
+        adagradopt = tf.train.AdagradOptimizer(learning_rate,
+                                               initial_accumulator_value=initial_accumulator_value)
+        adagradopt_ = adagradopt.minimize(input_, colocate_gradients_with_ops=True, global_step=global_step)
+        self.set_output('output', adagradopt_)
+        self.set_output('global_step', global_step)
+
+    learning_rate = learning_option.get("learning_rate")
+    initial_accumulator_value = learning_option.get("initial_accumulator_value", self.initial_accumulator_value)
+    input_ = self.get_input('loss')
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+            with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                apiConstructor(input_, learning_rate, initial_accumulator_value)
+        else:
+            apiConstructor(input_, learning_rate, initial_accumulator_value)

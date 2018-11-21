@@ -1,0 +1,88 @@
+@name: adamoptimizer
+
+@caffe_import:
+
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+	{
+        "name": "beta1",
+        "mandatory": "both",
+        "default": 0.9,
+        "source": "opt"
+    },
+    {
+        "name": "beta2",
+        "mandatory": "both",
+        "default": 0.999,
+        "source": "opt"
+    },
+    {
+        "name": "epsilon",
+        "mandatory": "both",
+        "default": 1e-05,
+        "source": "opt"
+    }
+]
+
+@caffe_compile_time:
+    learning_rate = learning_option.get("learning_rate")
+    beta1 = self.get_attr("beta1", self.beta1)
+    beta2 = self.get_attr("beta2", self.beta2)
+    epsilon = self.get_attr("epsilon", self.epsilon)
+
+    # default values
+    # sol.net = "/home/ncl/caffe/examples/msjeon/dlmdl2caffe/dlmdl2caffe.prototxt"
+    # sol.lr_policy = "fixed"
+    # sol.display = 50
+    #
+    # # specified values
+    # sol.base_lr = float(layer["attributes"]["learning_rate"])
+    #
+    # if "beta1" in layer["attributes"]:
+    #     sol.momentum = float(layer["attributes"]["beta1"])
+    #
+    # if "beta2" in layer["attributes"]:
+    #     sol.momentum2 = float(layer["attributes"]["bta2"])
+    #
+    # ### epsilon, train_iteration(input layer), test_iteration, test_interval????????????
+    for key in ['learning_rate', 'beta1', 'beta2', 'epsilon']:
+        try:
+            del learning_option[key]
+        except KeyError:
+            pass
+    learning_option['base_lr'] = float(learning_rate)
+    learning_option['momentum'] = float(beta1)
+    learning_option['momentum2'] = float(beta2)
+    learning_option['delta'] = float(epsilon)
+    learning_option['type'] = 'Adam'
+
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(input_, learning_rate, beta1, beta2, epsilon):
+        global_step = tf.train.get_or_create_global_step()
+        adamopt = tf.train.AdamOptimizer(learning_rate, beta1=beta1, beta2=beta2, epsilon=epsilon)
+        adamopt_ = adamopt.minimize(input_, colocate_gradients_with_ops=True, global_step=global_step)
+        self.set_output('output', adamopt_)
+        self.set_output('global_step', global_step)
+
+    learning_rate = learning_option.get("learning_rate")
+    beta1 = learning_option.get("beta1", self.beta1)
+    beta2 = learning_option.get("beta2", self.beta2)
+    epsilon = learning_option.get("epsilon", self.epsilon)
+    input_ = self.get_input('loss')
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+             with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                 apiConstructor(input_, learning_rate, beta1, beta2, epsilon)
+        else:
+            apiConstructor(input_, learning_rate, beta1, beta2, epsilon)

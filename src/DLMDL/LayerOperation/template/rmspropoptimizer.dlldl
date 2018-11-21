@@ -1,0 +1,82 @@
+@name: rmspropoptimizer
+
+@caffe_import:
+
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+    {
+        "default": 0.9, 
+        "source": "opt", 
+        "mandatory": "both", 
+        "name": "decay"
+    },
+    {
+        "default": 0.9,
+        "source": "opt", 
+        "mandatory": "both", 
+        "name": "momentum"
+    },
+    {
+        "default": 1e-5,
+        "source": "opt", 
+        "mandatory": "both", 
+        "name": "epsilon"
+    },
+    {
+        "default": false, 
+        "mandatory": "tf", 
+        "name": "centered"
+    }
+]
+
+@caffe_compile_time:
+    learning_rate = learning_option.get("learning_rate")
+    decay = learning_option.get("decay", self.decay)
+    momentum = learning_option.get("momentum", self.momentum)
+    epsilon = learning_option.get("epsilon", self.epsilon)
+
+    for key in ['learning_rate', 'decay', 'momentum', 'epsilon']:
+        try:
+            del learning_option[key]
+        except KeyError:
+            pass
+    learning_option['base_lr'] = learning_rate
+    learning_option['rms_decay'] = decay
+    learning_option['momentum'] = momentum
+    learning_option['delta'] = epsilon
+    learning_option['type'] = 'RMSProp'
+
+
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+    pass
+
+@tf_run_time:
+    def apiConstructor(input_, learning_rate, decay, momentum, epsilon, centered):
+        global_step = tf.train.get_or_create_global_step()
+        rmsopt = tf.train.RMSPropOptimizer(learning_rate, decay=decay, momentum=momentum, epsilon=epsilon,
+                                           centered=centered)
+        rmsopt_ = rmsopt.minimize(input_, colocate_gradients_with_ops=True, global_step=global_step)
+        self.set_output('output', rmsopt_)
+        self.set_output('global_step', global_step)
+
+    learning_rate = learning_option.get("learning_rate")
+    decay = learning_option.get("decay", self.decay)
+    momentum = learning_option.get("momentum", self.momentum)
+    epsilon = learning_option.get("epsilon", self.epsilon)
+    centered = learning_option.get("centered", self.centered)
+    input_ = self.get_input('loss')
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+             with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                 apiConstructor(input_, learning_rate, decay, momentum, epsilon, centered)
+
+        else:
+            apiConstructor(input_, learning_rate, decay, momentum, epsilon, centered)

@@ -1,0 +1,44 @@
+@name: momentumoptimizer
+
+@caffe_import:
+
+
+@tf_import:
+    import tensorflow as tf
+
+@attributes:
+[
+    {
+        "default": 0.9,
+        "source": "opt", 
+        "mandatory": "both",
+        "name": "momentum"
+    }
+]
+
+@caffe_compile_time:
+    pass
+@caffe_run_time:
+    pass
+
+@tf_compile_time:
+
+@tf_run_time:
+    def apiConstructor(input_, learning_rate, momentum, use_nesterov):
+        global_step = tf.train.get_or_create_global_step()
+        momentumopt = tf.train.MomentumOptimizer(learning_rate, momentum, use_nesterov=use_nesterov)
+        momentumopt_ = momentumopt.minimize(input_, colocate_gradients_with_ops=True, global_step=global_step)
+        self.set_output('output', momentumopt_)
+        self.set_output('global_step', global_step)
+
+    learning_rate = learning_option.get("learning_rate")
+    momentum = learning_option.get("momentum", self.momentum)
+    use_nesterov = False# use nesterov optimizer using nesterovoptimizer
+    input_ = self.get_input('loss')
+
+    with tf.name_scope(self.name) as scope:
+        if learning_option.get("parallel", None) != "DP":
+             with tf.device('/job:worker/task:%s' % self.get_attr('device')):
+                apiConstructor(input_, learning_rate, momentum, use_nesterov)
+        else:
+            apiConstructor(input_, learning_rate, momentum, use_nesterov)

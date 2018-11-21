@@ -1,0 +1,14 @@
+# -*- coding: utf-8 -*-
+from ..layer_operation import LayerOperation
+{import_lib}
+
+class op_{framework}_{name}(LayerOperation):
+
+    _attributes = """{attributes}"""
+
+    def compile_time_operation(self, learning_option, cluster):
+{variable_def}
+{compile_time}
+    def run_time_operation(self, learning_option, cluster):
+{variable_def}
+{run_time}

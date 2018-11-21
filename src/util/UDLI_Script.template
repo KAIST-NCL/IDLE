@@ -1,0 +1,113 @@
+# -*- coding: utf-8 -*-
+
+import abc
+import importlib
+import tensorflow as tf
+import time
+import socket
+from datetime import datetime
+import sys
+import threading
+import paramiko
+import re
+import argparse
+from collections import OrderedDict
+import os
+import json
+import numpy as np
+import collections
+import inspect
+from PIL import Image
+from tensorflow.examples.tutorials.mnist import input_data
+import cPickle
+import urllib
+import tarfile
+import zipfile
+import pickle
+import math
+import glob
+import re
+
+class LearningScript():
+
+    def __init__(self):
+        self.network = []
+        self.learning_option = {}
+        self.cluster = []
+        self.cluster_manager = None
+
+    def parse(self, file_path=None):
+        self.script_network()
+        self.script_cluster()
+        self.script_learning_option()
+        self.cluster_manager = cluster_manager(self.cluster)
+
+    def script_network(self):
+{network}
+    def script_learning_option(self):
+{learning_option}
+    def script_cluster(self):
+{cluster}
+    def Layer(self, type, name, inputs, outputs, attributes, device):
+        self.network.append({"type": type, "name": name, "inputs": inputs, "outputs": outputs,
+                             "attributes": attributes, "device": device})
+
+    def Learning_Option(self, attrname, attr):
+        self.learning_option[attrname] = attr
+
+    def Cluster(self, name, ip, type, task):
+        self.cluster.append({"name": name, "ip": ip, "type": type, "task":task})
+
+    def get_network(self):
+        return self.network
+
+    def get_cluster(self):
+        return self.cluster_manager
+
+    def get_learning_option(self):
+        return self.learning_option
+
+    def new_layer_resolver(self, layer_def):
+        return JsonLayerResolver(layer_def)
+
+
+{lib}
+
+
+class UDLI:
+
+    def __init__(self):
+        self.args = {args}
+        self.serializer = LearningScript()
+        self.serializer.parse()
+        framework = {framework}
+        self.network = DLNetwork(self.serializer, framework)
+        self.learning_option = dict(self.serializer.get_learning_option())
+        self.cluster = self.serializer.get_cluster()
+        self.adaptor = {framework}_adaptor
+
+    def launch(self):
+        self.adaptor.run(self)
+
+    def getArgs(self, attr):
+        return self.args[attr]
+
+    def addHandler(self, handler):
+        self.handler.addHandler(handler)
+
+    @staticmethod
+    def getCWD():
+        return os.getcwd()
+
+    def getFullPath(self, base_filename, filename_suffix=None):
+        ext = (("." + filename_suffix) if filename_suffix else "")
+        if base_filename[0] == '/':
+            return base_filename + ext
+        else:
+            return os.path.join(UDLI.getCWD(), base_filename + ext)
+
+    def script_name(self):
+        return self.getFullPath(sys.argv[0])
+
+if __name__ == '__main__':
+    UDLI().launch()
