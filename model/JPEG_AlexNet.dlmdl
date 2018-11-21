@@ -678,7 +678,7 @@
       ]
     },
     {
-      "type": "adam",
+      "type": "sgd",
       "name": "Optimizer1",
       "inputs":{
         "loss":[
@@ -690,7 +690,7 @@
         "global_step"
       ],
       "attributes":{
-        "lr":  0.2,
+        "lr":  0.1,
         "lr_scheduler":{
           "type": "step",
           "factor": 0.1,
@@ -710,20 +710,20 @@
     "data_path": "data/datasets/flowers/train",
     "label_path": "data/datasets/flowers/train/train_labeling.txt",
     "checkpoint_path": "output/checkpoint/jpeg_alexnet",
-    "checkpoint_interval": 1000,
-    "batch_size": 16,
+    "checkpoint_interval": 100,
+    "batch_size": 8,
     "iteration": 100000,
-    "train_display": 200,
-    "test_batch_size": 16,
+    "train_display": 50,
+    "test_batch_size": 8,
     "test_iteration": 10,
-    "test_interval": 500,
+    "test_interval": 200,
     "test_data_path": "data/datasets/flowers/test",
     "test_label_path": "data/datasets/flowers/test/test_labeling.txt"
   },
   "cluster": [
     {
       "name": "worker0",
-      "ip": "143.248.146.157:2222",
+      "ip": "{worker0_IP}:{Port_number}",
       "type": "gpu0",
       "task": "worker"
     }

@@ -724,13 +724,13 @@
   "cluster": [
     {
       "name": "worker0",
-      "ip": "143.248.146.157:2222",
+      "ip": {worker0_IP}:{port_number}",
       "type": "gpu0",
       "task": "worker"
     },
     {
       "name": "worker1",
-      "ip": "143.248.146.153:2223",
+      "ip": {worker1_IP}:{port_number}",
       "type": "gpu0",
       "task": "worker"
     }

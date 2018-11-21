@@ -424,10 +424,8 @@
     ],
     "learning_option": {
         "option": "TRAIN",
-        "file_format": "mdb",
-        "data_path": "data/datasets/cifar10/cifar10_train_lmdb",
-        "label_path": "",
-        "checkpoint_path": "output/checkpoint/cifar10_cnn",
+        "data_path": "data/datasets/cifar10/cifar10_bin",
+        "checkpoint_path": "output/checkpoint/cifar10",
         "checkpoint_interval": 1000,
         "batch_size": 100,
         "iteration": 100000,
@@ -435,13 +433,12 @@
         "test_batch_size": 100,
         "test_iteration": 100,
         "test_interval": 600,
-        "test_data_path": "data/datasets/cifar10/cifar10_test_lmdb",
-        "test_label_path": ""
+        "test_data_path": "data/datasets/cifar10/cifar10_bin"
     },
     "cluster": [
         {
             "name": "worker0",
-            "ip": "143.248.146.157:2222",
+            "ip": "{worker0_IP}:{Port_number}",
             "type": "gpu0",
             "task": "worker"
         }

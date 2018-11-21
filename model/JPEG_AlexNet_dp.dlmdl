@@ -690,7 +690,7 @@
         "global_step"
       ],
       "attributes":{
-        "lr":  0.1,
+        "lr":  0.01,
         "lr_scheduler":{
           "type": "step",
           "factor": 0.1,
@@ -709,23 +709,30 @@
     "file_format": "jpg",
     "data_path": "data/datasets/flowers/train",
     "label_path": "data/datasets/flowers/train/train_labeling.txt",
-    "checkpoint_path": "output/checkpoint/jpeg_alexnet",
-    "checkpoint_interval": 100,
-    "batch_size": 8,
+    "checkpoint_path": "output/checkpoint",
+    "checkpoint_interval": 10000,
+    "batch_size": 64,
     "iteration": 100000,
     "train_display": 50,
-    "test_batch_size": 8,
-    "test_iteration": 10,
-    "test_interval": 200,
+    "test_batch_size": 64,
+    "test_iteration": 100,
+    "test_interval": 1000,
     "test_data_path": "data/datasets/flowers/test",
-    "test_label_path": "data/datasets/flowers/test/test_labeling.txt"
+    "test_label_path": "data/datasets/flowers/test/test_labeling.txt",
+    "parallel": "DP"
   },
   "cluster": [
     {
-      "name": "worker0",
-      "ip": "143.248.146.157:2222",
+      "name": "worker3",
+      "ip": "{worker3_IP}:{Port_number}",
       "type": "gpu0",
       "task": "worker"
+    },
+    {
+      "name": "worker0",
+      "ip": "{worker0_IP}:{Port_number}",
+      "type": "gpu0",
+      "task": "ps"
     }
   ],
   "createdAt": "2016-12-10T13:17:38.270Z",

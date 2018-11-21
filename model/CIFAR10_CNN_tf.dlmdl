@@ -438,7 +438,7 @@
     "cluster": [
         {
             "name": "worker0",
-            "ip": "143.248.146.157:2222",
+            "ip": "{Worker0_IP}:{Port_Number}",
             "type": "gpu0",
             "task": "worker"
         }
