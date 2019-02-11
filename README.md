@@ -172,5 +172,5 @@ arguments are described in below
 | `--compile_out`	| compile output path	| `--compile_out=output/VGG`|
 | `--log_out`		| path to save TensorFlow log | `--log_out=/tmp/IDLE_LOG/TF`|
 
-#### License
-This project is released under the  BSD 2-Clause license, see LICENSE for more information.
+# License
+This project is released under the *[BSD 2-Clause license](https://github.com/BVLC/caffe/blob/master/LICENSE), see LICENSE for more information.
