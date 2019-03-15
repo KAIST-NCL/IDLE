@@ -31,7 +31,11 @@ class op_tf_accuracy(LayerOperation):
         type = cluster.get('types')[device].replace(str(num), '')
 
         def apiConstructor():
-            truth = tf.argmax(label, axis=1)
+            if learning_option.get('train_imagenet'):  # TODO: tmp
+                truth = label
+            else:
+                truth = tf.argmax(label, axis=1)
+            #truth = tf.argmax(label, axis=1)
             pred = tf.nn.softmax(logits=logits)
             predictions = tf.nn.in_top_k(pred, truth, topk)
             accuracy = tf.reduce_mean(tf.to_float(predictions))

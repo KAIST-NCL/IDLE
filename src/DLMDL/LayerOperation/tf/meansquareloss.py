@@ -32,6 +32,10 @@ class op_tf_meansquareloss(LayerOperation):
         def apiConstructor():
             mean_squared_diff = tf.squared_difference(labels, logits)
             loss = tf.reduce_mean(mean_squared_diff)
+            reg_losses = tf.losses.get_regularization_losses()
+            if len(reg_losses):
+                # TODO scope must contained
+                loss = loss + tf.add_n(reg_losses)
 
             # set output
             self.set_output('output', loss)

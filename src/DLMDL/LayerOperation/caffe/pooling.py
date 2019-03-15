@@ -13,7 +13,6 @@ class op_caffe_pooling(LayerOperation):
         # get input
         input_ = self.get_input('input')
         indim = self.get_dimension('input')
-        print(indim) # twtest
         # get attr
         # required field
         pool_type = self.get_attr('pool_type', default=None)
@@ -31,12 +30,12 @@ class op_caffe_pooling(LayerOperation):
 
         # padding
         if padding == 'SAME':
-            outdim = [np.ceil(float(indim[i]) / float(stride)) for i in xrange(2)]
+            outdim = [np.ceil(float(indim[i+2]) / float(stride)) for i in xrange(2)]
             outdim.insert(0, indim[0])
             outdim.insert(1, indim[1])
             p = [int(((outdim[i+2] - 1) * stride + kernel_size[i] - indim[i+2])/2) for i in xrange(2)]
         else:
-            outdim = [np.ceil(float(indim[i] - kernel_size[i] + 1) / float(stride)) for i in xrange(2)]
+            outdim = [np.ceil(float(indim[i+2] - kernel_size[i] + 1) / float(stride)) for i in xrange(2)]
             outdim.insert(0, indim[0])
             outdim.insert(1, indim[1])
             p = [0, 0]
@@ -47,8 +46,8 @@ class op_caffe_pooling(LayerOperation):
             engine_idx = 1
         elif engine == 'CUDNN':
             engine_idx = 2
-        else: #TODO: error handling
-            pass
+        else: #TODO: error handling: 'None' case
+            engine_idx = 0
 
         # pool=0: max_pool, pool=1: avr_pool
         if pool_type == 'MAX':

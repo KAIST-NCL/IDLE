@@ -27,7 +27,7 @@ class op_tf_lstm(LayerOperation):
         # optional field
         forget_bias = float(self.get_attr('forget_bias', default=1.0))
         activation = self.get_attr('activation', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
         # TODO: tmp
         if scope is None:
             scope = self.name

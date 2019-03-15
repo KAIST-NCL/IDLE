@@ -1,0 +1,178 @@
+{
+  "layers": [
+    {
+      "type": "mnist_input",
+      "name": "Input",
+      "inputs": {},
+      "outputs": [
+        "image",
+        "label"
+      ],
+      "attributes": {
+        "num_steps": 28,
+        "hidden_size": 128
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "lstm",
+      "name": "Lstm1",
+      "inputs": {
+        "input": [
+          "Input.image"
+        ]
+      },
+      "outputs":[
+        "output"
+      ],
+      "attributes":{
+        "forget_bias": 1.0,
+        "state_is_tuple": true
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "static_rnn",
+      "name": "Static_rnn1",
+      "inputs":{
+        "input":[
+          "Lstm1.output"
+        ]
+      },
+      "outputs":[
+        "output",
+        "state"
+      ],
+      "attributes":{
+        "initial_state": "ZERO"
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "fc",
+      "name": "Fc1",
+      "inputs": {
+        "input": [
+          "Static_rnn1.output"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+        "num_output": 10
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "softmaxwithloss",
+      "name": "Loss1",
+      "inputs": {
+        "logits": [
+          "Fc1.output"
+        ],
+        "labels": [
+          "Input.label"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+    {
+      "type": "accuracy",
+      "name": "Accuracy1",
+      "inputs": {
+        "logits": [
+          "Fc1.output"
+        ],
+        "labels": [
+          "Input.label"
+        ]
+      },
+      "outputs": [
+        "output"
+      ],
+      "attributes": {
+      },
+      "device": "worker0",
+      "coord": [
+        0,
+        0
+      ]
+    },
+     {
+      "type": "sgd",
+      "name": "Optimizer1",
+      "inputs":{
+        "loss":[
+          "Loss1.output"
+        ]
+      },
+      "outputs":[
+        "output",
+        "global_step"
+      ],
+      "attributes":{
+        "lr":  0.001
+      },
+      "device": "worker0",
+      "coord": [
+        3,
+        3
+      ]
+    }
+  ],
+  "learning_option": {
+    "option": "TRAIN",
+    "file_format": "",
+    "data_path": "data/datasets/mnist/mnist_bin",
+    "label_path": "",
+    "checkpoint_path": "output/checkpoint/minst_rnn",
+    "checkpoint_interval": 2000,
+    "batch_size": 256,
+    "iteration": 100000,
+    "train_display": 100,
+    "test_batch_size": 256,
+    "test_iteration": 100,
+    "test_interval": 1000,
+    "test_data_path": "data/datasets/mnist/mnist_bin",
+    "test_label_path": ""
+  },
+  "cluster": [
+    {
+      "name": "worker0",
+      "ip": "143.248.146.157:2222",
+      "type": "gpu0",
+      "task": "worker"
+    }
+  ],
+  "createdAt": "2016-12-10T13:17:38.270Z",
+  "updatedAt": "2016-12-10T13:17:38.270Z",
+  "id": 1
+}
+
+

@@ -38,7 +38,7 @@ class op_tf_conv(LayerOperation):
         initializer = self.get_attr('initializer', default={'weight': {}, 'bias':{}}) # default will set later
         regularizer = self.get_attr('regularizer', default={}) # default will set later
         dilate = self.get_attr('dilate', default=None)
-        scope = self.get_attr('scope', default=self.name)
+        scope = self.get_attr('scope', default='default')
 
         # get worker info: worker num, device type, device num
         device = self.get_attr('device')
@@ -51,28 +51,39 @@ class op_tf_conv(LayerOperation):
         dilate_shape = [dilate, dilate] if dilate is not None else None
         bias_shape = [num_output]
 
+
         with tf.variable_scope(self.name):
             # get weight for convolution
             with tf.variable_scope(scope):
                 weight_init = get_initializer(initializer.get('weight'), is_bias=False)
-                weight_reg = get_regularizer(regularizer, is_bias=False)
-                weights = tf.get_variable('weights', shape=weight_shape, dtype=tf.float32,
-                                          initializer=weight_init, regularizer=weight_reg,
-                                          trainable=True)
-                #tf.add_to_collection(scope, weights)
+                weight_reg = get_regularizer(regularizer, scope, is_bias=False)
+                if learning_option.get("parallel", None) == "DP_mb":
+                    with tf.device('/job:worker/task:{0}/mb:0'.format(device)):
+                        weights = tf.get_variable('weights', shape=weight_shape, dtype=tf.float32,
+                                                  initializer=weight_init, regularizer=weight_reg,
+                                                  trainable=True)
+                else:
+                    weights = tf.get_variable('weights', shape=weight_shape, dtype=tf.float32,
+                                              initializer=weight_init, regularizer=weight_reg,
+                                              trainable=True)
+                    #tf.add_to_collection(scope, weights)
 
                 if bias_term:
                     bias_init = get_initializer(initializer.get('bias'), is_bias=True)
-                    bias_reg = get_regularizer(regularizer, is_bias=True)
-                    biases = tf.get_variable('biases', shape=bias_shape, dtype=tf.float32,
-                                             initializer=bias_init, regularizer=bias_reg,
-                                             trainable=True)
+                    bias_reg = get_regularizer(regularizer, scope, is_bias=True)
+                    if learning_option.get("parallel", None) == "DP_mb":
+                        with tf.device('/job:worker/task:{0}/mb:0'.format(device)):
+                            biases = tf.get_variable('biases', shape=bias_shape, dtype=tf.float32,
+                                                     initializer=bias_init, regularizer=bias_reg,
+                                                     trainable=True)
+                    else:
+                        biases = tf.get_variable('biases', shape=bias_shape, dtype=tf.float32,
+                                                 initializer=bias_init, regularizer=bias_reg,
+                                                 trainable=True)
                     #tf.add_to_collection(scope, biases)
 
         # construct API
         def apiConstructor():
-
-
             conv = tf.nn.convolution(input_, weights, padding,
                                      strides=stride_shape, dilation_rate=dilate_shape, data_format='NHWC')
 

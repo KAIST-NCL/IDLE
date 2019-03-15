@@ -23,6 +23,8 @@ import math
 import glob
 import re
 
+from tensorflow.python.training.summary_io import SummaryWriterCache
+
 class PTBreader(object):
     """
         Dataset reader class for PTB text dataset
@@ -69,7 +71,7 @@ class PTBreader(object):
         if self.istrain == True:
             train_path = os.path.join(self.data_path, "ptb.train.txt")
         else:
-            train_path = os.path.join(self.data_path, "ptb.test.txt") 
+            train_path = os.path.join(self.data_path, "ptb.test.txt")
         word_to_id = self._build_vocab(train_path)
         raw_data = self._file_to_word_ids(train_path, word_to_id)
 
@@ -349,17 +351,17 @@ class CIFAR10reader(object):
             labels_rest_part = self.labels[rest_idx]
 
             if self.shuffle:
-                np.random.shuffle(self.batch_idx)  # shuffle indexs
+                np.random.shuffle(self.batch_idx)  # shuffle index
             else:  # not shuffle
                 pass
 
             start = 0
-            self.index_in_epoch = self.batch_size - rest_num_examples  # avoid the case where the #sample != integar times of batch_size
+            self.index_in_epoch = self.batch_size - rest_num_examples  # avoid the case where the #sample != integer times of batch_size
             end = self.index_in_epoch
             idx = self.batch_idx[start:end]
             images_new_part = self.images[idx]
             labels_new_part = self.labels[idx]
-            batched_x = np.concatenate((images_rest_part, images_new_part), axis=0) / 255.0
+            batched_x = np.concatenate((images_rest_part, images_new_part), axis=0)
             batched_y = np.concatenate((labels_rest_part, labels_new_part), axis=0)
         else:
             self.index_in_epoch += self.batch_size
@@ -598,10 +600,10 @@ class MNISTreader(object):
         (x_train, y_train), (x_test, y_test) = tf.contrib.keras.datasets.mnist.load_data()
         # read train/test images and extract images pixel and labels
         if self.option == 1:
-            x = x_train
+            x = x_train / 255.0
             y_fine = y_train
         elif self.option == 0:
-            x = x_test
+            x = x_test / 255.0
             y_fine = y_test
 
         # make [ALLIMAGES,1] to [ALLIMAGES, NUM_CLASSES]
@@ -648,7 +650,7 @@ class MNISTreader(object):
             idx = self.batch_idx[start:end]
             images_new_part = self.images[idx]
             labels_new_part = self.labels[idx]
-            batched_x = np.concatenate((images_rest_part, images_new_part), axis=0) / 255.0
+            batched_x = np.concatenate((images_rest_part, images_new_part), axis=0)
             batched_y = np.concatenate((labels_rest_part, labels_new_part), axis=0)
         else:
             self.index_in_epoch += self.batch_size
@@ -656,6 +658,8 @@ class MNISTreader(object):
             idx = self.batch_idx[start:end]
             batched_x = self.images[idx]
             batched_y = self.labels[idx]
+        # make [batch_size, 28, 28] images to [batch_size, 28, 28, 1] dimensions
+        batched_x = np.reshape(batched_x, [-1, 28, 28, 1])
         return batched_x , batched_y
 
     # print download progress
@@ -692,6 +696,281 @@ class MNISTreader(object):
             print("Done.")
             os.rename(main_directory + "./cifar-10-batches-py", cifar_directory)
             os.remove(zip_cifar)
+
+class IMAGENETreader(object):
+    """
+    Dataset reader class for imagenet files with tf.Record
+    inputs:
+
+    """
+    def __init__(self, data_dir, batch_size, shuffle, is_train):
+        self.index_in_epoch = 0
+        self.epochs_completed = 0
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.is_train = is_train
+        self.num_preprocess_threads = 4 # Number of preprocessing threads per tower. Please make this a multiple of 4
+        self.num_readers = 4 # Number of parallel readers during train
+        self.input_queue_memory_factor = 16 # Size of the queue of preprocessed images.
+        self.height = self.width = 224
+        self.depth = 3
+
+    def eval_image(self, image):
+        """Prepare one image for evaluation.
+          Args:
+            image: 3-D float Tensor
+            height: integer
+            width: integer
+            scope: Optional scope for name_scope.
+          Returns:
+            3-D float Tensor of prepared image.
+          """
+        with tf.name_scope(values=[image, self.height, self.width], name='eval_image'):
+            # Crop the central region of the image with an area containing 87.5% of
+            # the original image.
+            image = tf.image.central_crop(image, central_fraction=0.875)
+
+            # Resize the image to the original height and width.
+            image = tf.expand_dims(image, 0)
+            image = tf.image.resize_bilinear(image, [self.height, self.width],
+                                             align_corners=False)
+            image = tf.squeeze(image, [0])
+            return image
+
+    def data_files(self):
+        """Returns a python list of all (sharded) data subset files.
+            Returns:
+              python list of all (sharded) data set files.
+            Raises:
+              ValueError: if there are not data_files matching the subset.
+        """
+        if self.is_train == 1:
+            str_file = 'train'
+        else:
+            str_file = 'validation'
+        tf_record_pattern = os.path.join(self.data_dir, '%s-*' % str_file)
+        data_files = tf.gfile.Glob(tf_record_pattern)
+        if not data_files:
+            raise ValueError('No files found for dataset in %s' % self.data_dir)
+
+        return data_files
+
+    def decode_jpeg(self, image_buffer):
+        """Decode a JPEG string into one 3-D float image Tensor.
+          Args:
+            image_buffer: scalar string Tensor.
+          Returns:
+            3-D float Tensor with values ranging from [0, 1).
+          """
+        with tf.name_scope(values=[image_buffer], name='decode_jpeg'):
+            # Decode the string as an RGB JPEG.
+            # Note that the resulting image contains an unknown height and width
+            # that is set dynamically by decode_jpeg. In other words, the height
+            # and width of image is unknown at compile-time.
+            image = tf.image.decode_jpeg(image_buffer, channels=3)
+
+            # After this point, all image pixels reside in [0,1)
+            # until the very end, when they're rescaled to (-1, 1).  The various
+            # adjust_* ops all require this range for dtype float.
+            image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+            return image
+
+    def distorted_image(self, image, bbox, thread_id=0):
+        '''
+        WARNING: current version only resize image, not augmentation.
+        TODO: image augmentation func.
+        :param image:
+        :param bbox:
+        :param thread_id:
+        :return:
+        '''
+        # A large fraction of image datasets contain a human-annotated bounding
+        # box delineating the region of the image containing the object of interest.
+        # We choose to create a new bounding box for the object which is a randomly
+        # distorted version of the human-annotated bounding box that obeys an allowed
+        # range of aspect ratios, sizes and overlap with the human-annotated
+        # bounding box. If no box is supplied, then we assume the bounding box is
+        # the entire image.
+        sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
+            tf.shape(image),
+            bounding_boxes=bbox,
+            min_object_covered=0.1,
+            aspect_ratio_range=[0.75, 1.33],
+            area_range=[0.05, 1.0],
+            max_attempts=100,
+            use_image_if_no_bounding_boxes=True)
+        bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
+
+        # Crop the image to the specified bounding box.
+        distorted_image = tf.slice(image, bbox_begin, bbox_size)
+
+        # This resizing operation may distort the images because the aspect
+        # ratio is not respected. We select a resize method in a round robin
+        # fashion based on the thread number.
+        # Note that ResizeMethod contains 4 enumerated resizing methods.
+        resize_method = thread_id % 4
+        distorted_image = tf.image.resize_images(distorted_image, [self.height, self.width],
+                                                 method=resize_method)
+        # Restore the shape since the dynamic slice based upon the bbox_size loses
+        # the third dimension.
+        distorted_image.set_shape([self.height, self.width, 3])
+        return distorted_image
+
+    def image_preprocessing(self, image_buffer, bbox, thread_id=0):
+        if bbox is None:
+            raise ValueError('Please supply a bounding box.')
+
+        image = self.decode_jpeg(image_buffer)
+        if self.is_train:
+            image = self.distorted_image(image, bbox, thread_id)
+        else:
+            image = self.eval_image(image)
+
+        # Finally, rescale to [-1,1] instead of [0, 1)
+        image = tf.subtract(image, 0.5)
+        image = tf.multiply(image, 2.0)
+
+        return image
+
+    def parse_example_proto(self, example_serialized):
+        '''Parses an Example proto containing a training example of an image.
+          The output of the build_image_data.py image preprocessing script is a dataset
+          containing serialized Example protocol buffers. Each Example proto contains
+          the following fields:
+            image/height: 462
+            image/width: 581
+            image/colorspace: 'RGB'
+            image/channels: 3
+            image/class/label: 615
+            image/class/synset: 'n03623198'
+            image/class/text: 'knee pad'
+            image/object/bbox/xmin: 0.1
+            image/object/bbox/xmax: 0.9
+            image/object/bbox/ymin: 0.2
+            image/object/bbox/ymax: 0.6
+            image/object/bbox/label: 615
+            image/format: 'JPEG'
+            image/filename: 'ILSVRC2012_val_00041207.JPEG'
+            image/encoded: <JPEG encoded string>
+        '''
+        # Dense features in Example proto.
+        feature_map = {
+            'image/encoded': tf.FixedLenFeature([], dtype=tf.string,
+                                                default_value=''),
+            'image/class/label': tf.FixedLenFeature([1], dtype=tf.int64,
+                                                    default_value=-1),
+            'image/class/text': tf.FixedLenFeature([], dtype=tf.string,
+                                                   default_value=''),
+        }
+        sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
+        # Sparse features in Example proto.
+        feature_map.update(
+            {k: sparse_float32 for k in ['image/object/bbox/xmin',
+                                         'image/object/bbox/ymin',
+                                         'image/object/bbox/xmax',
+                                         'image/object/bbox/ymax']})
+
+        features = tf.parse_single_example(example_serialized, feature_map)
+        label = tf.cast(features['image/class/label'], dtype=tf.int32)
+
+        xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
+        ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 0)
+        xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 0)
+        ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 0)
+
+        # Note that we impose an ordering of (y, x) just to make life difficult.
+        bbox = tf.concat(axis=0, values=[ymin, xmin, ymax, xmax])
+
+        # Force the variable number of bounding boxes into the shape
+        # [1, num_boxes, coords].
+        bbox = tf.expand_dims(bbox, 0)
+        bbox = tf.transpose(bbox, [0, 2, 1])
+
+        return features['image/encoded'], label, bbox, features['image/class/text']
+
+    def batch_inputs(self):
+        """
+        pop next batch among dataset
+        :return: image batch, label batch
+        """
+
+        with tf.name_scope('batch_processing'):
+            data_files = self.data_files()
+            if data_files is None:
+                raise ValueError('No data files found for imagenet dataset')
+
+        # create filename_queue
+        if self.is_train:
+            filename_queue = tf.train.string_input_producer(data_files,
+                                                            shuffle=self.shuffle,
+                                                            capacity=16)
+        else:
+            filename_queue = tf.train.string_input_producer(data_files,
+                                                            shuffle=False,
+                                                            capacity=1)
+
+        examples_per_shard = 1024
+        min_queue_examples = examples_per_shard * self.input_queue_memory_factor
+        if self.is_train:
+            examples_queue = tf.RandomShuffleQueue(
+                capacity=min_queue_examples + 3 * self.batch_size,
+                min_after_dequeue=min_queue_examples,
+                dtypes=[tf.string])
+        else:
+            examples_queue = tf.FIFOQueue(
+                capacity=examples_per_shard + 3 * self.batch_size,
+                dtypes=[tf.string])
+
+        # Create multiple readers to populate the queue of examples.
+        if self.num_readers > 1:
+            enqueue_ops = []
+            for _ in range(self.num_readers):
+                reader = tf.TFRecordReader()
+                _, value = reader.read(filename_queue)
+                enqueue_ops.append(examples_queue.enqueue([value]))
+            tf.train.queue_runner.add_queue_runner(
+                tf.train.queue_runner.QueueRunner(examples_queue, enqueue_ops))
+            example_serialized = examples_queue.dequeue()
+        else:
+            reader = tf.TFRecordReader()
+            _, example_serialized = reader.read(filename_queue)
+
+        images_and_labels = []
+        for thread_id in range(self.num_preprocess_threads):
+            # Parse a serialized Example proto to extract the image and metadata.
+            image_buffer, label_index, bbox, _ = self.parse_example_proto(example_serialized)
+            image = self.image_preprocessing(image_buffer, bbox, thread_id)
+            images_and_labels.append([image, label_index])
+
+        images, label_index_batch = tf.train.batch_join(images_and_labels,
+                                                        batch_size=self.batch_size,
+                                                        capacity=2 * self.num_preprocess_threads * self.batch_size)
+
+        images = tf.cast(images, tf.float32)
+        images = tf.reshape(images, shape=[self.batch_size, self.height, self.width, self.depth])
+
+        return images, tf.reshape(label_index_batch, [self.batch_size])
+
+    def next_batch(self):
+        """Generate batches of distorted versions of ImageNet images.
+          Use this function as the inputs for training a network.
+          Distorting images provides a useful technique for augmenting the data
+          set during training in order to make the network invariant to aspects
+          of the image that do not effect the label.
+          Args:
+            dataset: instance of Dataset class specifying the dataset.
+            batch_size: integer, number of examples in batch
+            num_preprocess_threads: integer, total number of preprocessing threads but
+              None defaults to FLAGS.num_preprocess_threads.
+          Returns:
+            images: Images. 4D tensor of size [batch_size, FLAGS.image_size,
+                                               FLAGS.image_size, 3].
+            labels: 1-D integer Tensor of [batch_size].
+          """
+        with tf.device('/cpu:0'):
+            images, labels = self.batch_inputs()
+        return images, labels - 1
 
 # TODO: implement
 class TEXTreader(object):
@@ -745,7 +1024,7 @@ class tf_adaptor:
                 'DLNetwork': ['DLNetwork'],
                 'inout': ['InOut', 'In', 'Out'],
                 'layer': ['Layer'],
-                'tf_adaptor': ['tf_adaptor', 'JPEGreader', 'PTBreader', 'CIFAR10reader', 'GLAUCOMAreader', 'BODYDATAreader', 'MNISTreader']
+                'tf_adaptor': ['tf_adaptor', 'JPEGreader', 'PTBreader', 'CIFAR10reader', 'GLAUCOMAreader', 'BODYDATAreader', 'MNISTreader', 'IMAGENETreader']
             },
             'src.DLMDL.LayerOperation': {
                 'layer_operation': ['LayerOperationAdaptor', 'LayerOperation']
@@ -758,6 +1037,7 @@ class tf_adaptor:
                 'batchnorm': ['op_tf_batchnorm'],
                 'bodydata_input': ['op_tf_bodydata_input'],
                 'cifar10_input': ['op_tf_cifar10_input'],
+                'imagenet_input': ['op_tf_imagenet_input'],
                 'concat': ['op_tf_concat'],
                 'conv': ['op_tf_conv'],
                 'csv_input': ['op_tf_csv_input'],
@@ -850,13 +1130,18 @@ class tf_adaptor:
             ps_hosts = [cluster.get('hosts').pop(cluster.getIndex('tasks', 'ps'))]
             worker_hosts = cluster.get('hosts')
             tf_cluster = tf.train.ClusterSpec({'ps':ps_hosts, 'worker':worker_hosts})
-            current_address = tf_adaptor.resolve_address() # get address of this node
-
+            current_address = tf_adaptor.resolve_address() # get address of this nodes
             if current_address == ps_hosts[0].split(':')[0]: # if this node is ps, running parameter server
                 ps_idx = 0 # assume only one parameter server
                 server = tf.train.Server(tf_cluster, job_name='ps', task_index=ps_idx) # in-process TF server
+                ckpt_dir = learning_option.get('checkpoint_path')
+                # create checkpoint directory if there isn't 'ckpt_dir'
+                if ckpt_dir is not None:
+                    if not os.path.exists(ckpt_dir):
+                        os.makedirs(ckpt_dir)
                 print('[DLMDL] grpc_server running')
                 server.join()
+
             else: # if this node is worker
                 worker_idx = tf_adaptor.get_node_index(worker_hosts)  # get worker index
                 server = tf.train.Server(tf_cluster, job_name='worker',
@@ -877,6 +1162,7 @@ class tf_adaptor:
                 tf_adaptor.worker_executor(UDLI, cluster, grpc_host, learning_option, network, worker_idx)
             else:
                 tf_adaptor.grpc_server(server)
+
         elif learning_option.get('parallel') == 'DP_mb': # use memory box - ETRI
             # divide cluster info. into workers
             worker_hosts = cluster.get('hosts')
@@ -884,14 +1170,16 @@ class tf_adaptor:
             tf_cluster = tf.train.ClusterSpec({'worker': worker_hosts})
             server = tf.train.Server(tf_cluster, job_name='worker',
                                      task_index=worker_idx)  # in-process TF server
-
+            tf_adaptor.worker_executor_mb(UDLI, cluster, server.target, learning_option, network, worker_idx)
         print("[DLMDL] Training Finished!")
 
     @staticmethod
     def worker_executor(UDLI, cluster, server, learning_option, network, worker_idx):
         current_address = tf_adaptor.resolve_address()  # get address of this node
         print('[DLMDL] worker ip: {0}, worker index: {1}'.format(current_address, worker_idx))
-        network.run(learning_option, cluster)  # bulid TF model
+
+
+        #network.run(learning_option, cluster)  # bulid TF model
 
         # WARNING: parameter server must be last number which is bottom worker in .dlmdl cluster
         #          In release version, ssh handler don't include
@@ -905,24 +1193,6 @@ class tf_adaptor:
         opt_layer = network.get_layer_by_type('adam|sgd|momentum|rmsprop|nesterov|adadelta|adagrad').pop()  # get optimizer layer
         print('[DLMDL] using {0} as optimizer of model'.format(opt_layer.type))
         global_step = tf.train.get_or_create_global_step()  # get global step
-
-        # get operations
-        is_train = learning_option.get('is_train')  # placeholder to set procedure
-        # get loss op.
-        loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
-        # get opt. op.
-        train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
-
-        # get accuracy layer and operation
-        # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
-        acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
-        if acc_layer == []: # no acc op
-            print('[DLMDL] no accuracy related layer in model')
-            acc_op = None
-        else:
-            acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
-            print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
-            acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
 
         # TODO: error handling in learning option
         print('[DLMDL] learning option parsing...')
@@ -940,11 +1210,43 @@ class tf_adaptor:
 
         # options related to checkpoint
         ckpt_interval = learning_option.get('checkpoint_interval')
-        if ckpt_interval is None:
-            ckpt_interval = train_iter + 1
         ckpt_dir = learning_option.get('checkpoint_path')
 
+        # if option is restore, check the existing checkpoint file
+        if learning_option.get('option') == 'RETRAIN':
+            if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+
+        # TF summary merge op. and session configuration
+        config = tf.ConfigProto()  # ocnfiguration object for session
+        config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+        config.log_device_placement = False  # not loggging ops/vars-devices mapping
+        config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+        # step, summary, checkpoint hook setting
+        summarydir = UDLI.getArgs('log_out')
+        stophooks = tf.train.StopAtStepHook(last_step=train_iter)
+
         if input_layer.type == 'jpeg_input':  # for jpeg_input
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
             # get input placeholders.
             batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
             batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
@@ -963,22 +1265,13 @@ class tf_adaptor:
             train_label_dir = learning_option.get('label_path')
             train_reader = JPEGreader(train_dir, train_label_dir, train_bs,
                                       image_size, is_shuffle, num_classes)
+
             if test_dir is None:  # if no test dataset
                 test_reader = None
             else:  # get reader class for testing data
                 test_label_dir = learning_option.get('test_label_path')
                 test_reader = JPEGreader(test_dir, test_label_dir, test_bs,
                                          image_size, is_shuffle, num_classes)
-
-            # TF summary merge op. and session configuration
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # step, summary, checkpoint hook setting
-            summarydir = UDLI.getArgs('log_out')
-            stophooks = tf.train.StopAtStepHook(num_steps=train_iter)
 
             # if option is restore, check the existing checkpoint file
             if learning_option.get('option') == 'RETRAIN':
@@ -987,12 +1280,14 @@ class tf_adaptor:
 
             # open TF session
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
-                                                   hooks=[stophooks], save_checkpoint_steps=ckpt_interval,
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
                                                    checkpoint_dir=ckpt_dir,
                                                    save_summaries_steps=train_dp,
                                                    log_step_count_steps=0,
                                                    summary_dir=summarydir,
                                                    config=config) as sess:
+                summary_writer = SummaryWriterCache.get(summarydir)
                 while not sess.should_stop():
                     start_time = time.time()
                     # one step training
@@ -1011,21 +1306,47 @@ class tf_adaptor:
                             train_loss = sess.run(loss_op,
                                                   feed_dict={batch_x: batched_x, batch_y: batched_y})
                             print(format_str.format(step, train_loss, time.time() - start_time))
-
-                    if acc_op is not None and step % test_interval == 0:  # display testing result
-                        print('Testing......')
-                        test_acc_mean = 0.0
-                        for i in xrange(1, test_iter):
-                            batched_x, batched_y = test_reader.next_batch()
-                            test_acc = sess.run(acc_op,
-                                                feed_dict={batch_x: batched_x, batch_y: batched_y,
-                                                           is_train: False})
-                            test_acc_mean += test_acc
-                        test_acc_mean = test_acc_mean / test_iter
-                        print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            test_loss_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc, test_loss = sess.run([acc_op, loss_op],
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                                test_loss_mean += test_loss
+                            test_acc_mean = test_acc_mean / test_iter
+                            test_loss_mean = test_loss_mean / test_iter
+                            summary = tf.Summary(value=[tf.Summary.Value(tag='test_accuracy', simple_value=test_acc_mean),
+                                                        tf.Summary.Value(tag='test_loss', simple_value=test_loss_mean)
+                                                        ])
+                            summary_writer.add_summary(summary, step)
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
         elif input_layer.type == 'database_input': # not yet used
             pass
         elif input_layer.type == 'mnist_input':
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
             # get input placeholders.
             batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
             batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
@@ -1049,30 +1370,16 @@ class tf_adaptor:
                 num_units = 28 # fixed
                 num_steps = input_layer.get_attr('num_steps')
 
-            # TF summary merge op. and session configuration
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # step, summary, checkpoint hook setting
-            summarydir = UDLI.getArgs('log_out')
-            stophooks = tf.train.StopAtStepHook(num_steps=train_iter)
-
-            # if option is restore, check the existing checkpoint file
-            if learning_option.get('option') == 'RETRAIN':
-                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
-                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
-
             # open TF session
-            # TODO: TF v1.1.0 not support to save checkpoint by step count in monitored training session. so use hook
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
-                                                   hooks=[stophooks], save_checkpoint_steps=ckpt_interval,
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
                                                    checkpoint_dir=ckpt_dir,
                                                    save_summaries_steps=train_dp,
                                                    summary_dir=summarydir,
                                                    log_step_count_steps=0,
                                                    config=config) as sess:
+                summary_writer = SummaryWriterCache.get(summarydir)
                 while not sess.should_stop():
                     start_time = time.time()
                     # one step training
@@ -1094,21 +1401,47 @@ class tf_adaptor:
                             train_loss = sess.run(loss_op,
                                                   feed_dict={batch_x: batched_x, batch_y: batched_y})
                             print(format_str.format(step, train_loss, time.time() - start_time))
-
-                    if acc_op is not None and step % test_interval == 0:  # display testing result
-                        print('Testing......')
-                        test_acc_mean = 0.0
-                        for i in xrange(1, test_iter):
-                            batched_x, batched_y = test_reader.next_batch()
-                            if learning_option.get('num_steps') is not None:  # only for training RNN with MNIST
-                                batched_x = batched_x.reshape((train_bs, num_steps, num_units))
-                            test_acc = sess.run(acc_op,
-                                                feed_dict={batch_x: batched_x, batch_y: batched_y,
-                                                           is_train: False})
-                            test_acc_mean += test_acc
-                        test_acc_mean = test_acc_mean / test_iter
-                        print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            test_loss_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                if learning_option.get('num_steps') is not None:  # only for training RNN with MNIST
+                                    batched_x = batched_x.reshape((train_bs, num_steps, num_units))
+                                test_acc, test_loss = sess.run([acc_op, loss_op],
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                                test_loss_mean += test_loss
+                            test_acc_mean = test_acc_mean / test_iter
+                            test_loss_mean = test_loss_mean / test_iter
+                            summary = tf.Summary(value=[tf.Summary.Value(tag='test_accuracy', simple_value=test_acc_mean),
+                                                        tf.Summary.Value(tag='test_loss', simple_value=test_loss_mean)
+                                                        ])
+                            summary_writer.add_summary(summary, step)
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
         elif input_layer.type == 'cifar10_input':
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
             # get input placeholders.
             batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
             batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
@@ -1128,34 +1461,16 @@ class tf_adaptor:
             else:  # get reader class for testing data
                 test_reader = CIFAR10reader(test_dir, test_bs, is_shuffle, istrain=0)
 
-            # TF summary merge op. and session configuration
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # step, summary, checkpoint hook setting
-            summarydir = UDLI.getArgs('log_out')
-            # if option is restore, check the existing checkpoint file
-            if learning_option.get('option') == 'RETRAIN':
-                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
-                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
-                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
-                print(last_ckpt_filename)
-                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
-                print(prev_iter)
-                train_iter = train_iter - prev_iter
-
-            stophooks = tf.train.StopAtStepHook(num_steps=train_iter)
-
             # open TF session
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
-                                                   hooks=[stophooks], save_checkpoint_steps=ckpt_interval,
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
                                                    checkpoint_dir=ckpt_dir,
                                                    summary_dir=summarydir,
                                                    save_summaries_steps=train_dp,
                                                    log_step_count_steps=0,
                                                    config=config) as sess:
+                summary_writer = SummaryWriterCache.get(summarydir)
                 while not sess.should_stop():
                     start_time = time.time()
                     # one step training
@@ -1175,19 +1490,45 @@ class tf_adaptor:
                             train_loss = sess.run(loss_op,
                                                   feed_dict={batch_x: batched_x, batch_y: batched_y})
                             print(format_str.format(step, train_loss, time.time() - start_time))
-
-                    if acc_op is not None and step % test_interval == 0:  # display testing result
-                        print('Testing......')
-                        test_acc_mean = 0.0
-                        for i in xrange(1, test_iter):
-                            batched_x, batched_y = test_reader.next_batch()
-                            test_acc = sess.run(acc_op,
-                                                feed_dict={batch_x: batched_x, batch_y: batched_y,
-                                                           is_train: False})
-                            test_acc_mean += test_acc
-                        test_acc_mean = test_acc_mean / test_iter
-                        print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            test_loss_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc, test_loss = sess.run([acc_op, loss_op],
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                                test_loss_mean += test_loss
+                            test_acc_mean = test_acc_mean / test_iter
+                            test_loss_mean = test_loss_mean / test_iter
+                            summary = tf.Summary(value=[tf.Summary.Value(tag='test_accuracy', simple_value=test_acc_mean),
+                                                        tf.Summary.Value(tag='test_loss', simple_value=test_loss_mean)
+                                                        ])
+                            summary_writer.add_summary(summary, step)
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
         elif input_layer.type == 'glaucoma_input':
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
             # data augumentation for glaucoma images - refered from original source code -twkim
             def data_aug(data, labels):
                 aug_data1 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 0, 0, 224, 224), data)
@@ -1218,7 +1559,6 @@ class tf_adaptor:
             images_raw = tf.placeholder(tf.float32, shape=(None, 240, 240, 3), name='glaucoma_raw_images')
             labels_raw = tf.placeholder(tf.int32, shape=(None, 2), name='glaucoma_raw_labels')
 
-
             with tf.device('/cpu:0'):
                 augmented_train_images, augmented_train_labels = data_aug(images_raw, labels_raw)
                 augmented_test_images, augmented_test_labels = data_aug(images_raw, labels_raw)
@@ -1232,7 +1572,6 @@ class tf_adaptor:
             is_shuffle = learning_option.get('shuffle')
 
             # get reader class for training data
-            #train_images = open(train_dir + '/train_dataset.npy')
             train_images = open(train_dir + '/train_dataset.npy')
             train_labels = open(train_dir + '/train_labels.npy')
             raw_train_images = np.load(train_images)
@@ -1245,31 +1584,16 @@ class tf_adaptor:
                 raw_test_images = np.load(test_images)
                 raw_test_labels = np.load(test_labels)
 
-            # TF summary merge op. and session configuration
-            merged = tf.summary.merge_all()  # merge summary data
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # step, summary, checkpoint hook setting
-            summarydir = UDLI.getArgs('log_out')
-            stophooks = tf.train.StopAtStepHook(num_steps=train_iter)
-
-            # if option is restore, check the existing checkpoint file
-            if learning_option.get('option') == 'RETRAIN':
-                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
-                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
-
             # open TF session
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
-                                                   hooks=[stophooks], save_checkpoint_steps=ckpt_interval,
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
                                                    checkpoint_dir=ckpt_dir,
                                                    summary_dir=summarydir,
                                                    save_summaries_steps=train_dp,
                                                    log_step_count_steps=0,
                                                    config=config) as sess:
-
+                summary_writer = SummaryWriterCache.get(summarydir)
                 # load arugmented data w.r.t training/test dataset
                 tmp_x = np.zeros([1, 224, 224, 3], dtype=np.float32)
                 tmp_y = np.zeros([1, 2], dtype=np.float32)
@@ -1308,18 +1632,45 @@ class tf_adaptor:
                                                   feed_dict={batch_x: batched_x, batch_y: batched_y})
                             print(format_str.format(step, train_loss, time.time() - start_time))
 
-                    if acc_op is not None and step % test_interval == 0:  # display testing result
-                        print('Testing......')
-                        test_acc_mean = 0.0
-                        for i in xrange(1, test_iter):
-                            batched_x, batched_y = test_reader.next_batch()
-                            test_acc = sess.run(acc_op,
-                                                feed_dict={batch_x: batched_x, batch_y: batched_y,
-                                                           is_train: False})
-                            test_acc_mean += test_acc
-                        test_acc_mean = test_acc_mean / test_iter
-                        print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            test_loss_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc, test_loss = sess.run([acc_op, loss_op],
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                                test_loss_mean += test_loss
+                            test_acc_mean = test_acc_mean / test_iter
+                            test_loss_mean = test_loss_mean / test_iter
+                            summary = tf.Summary(value=[tf.Summary.Value(tag='test_accuracy', simple_value=test_acc_mean),
+                                                        tf.Summary.Value(tag='test_loss', simple_value=test_loss_mean)
+                                                        ])
+                            summary_writer.add_summary(summary, step)
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
         elif input_layer.type == 'ptb_input':
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
             # get input placeholders.
             batch_x = learning_option.get('data_placeholder')  # image/data/text/... (data info.)
             batch_y = input_layer.get_op_output('targets')  # labels/targets/... (label info.)
@@ -1337,8 +1688,6 @@ class tf_adaptor:
 
             # get option attributes
             num_steps = learning_option.get('num_steps')
-            hidden_size = learning_option.get('hidden_size')
-            num_class = learning_option.get('num_class')  # 10000: fixed classes
 
             # get reader class for training data
             train_reader = PTBreader(train_dir, train_bs, num_steps, istrain=True)
@@ -1347,30 +1696,17 @@ class tf_adaptor:
             else:  # get reader class for testing data
                 test_reader = PTBreader(test_dir, test_bs, num_steps, istrain=False)
 
-            # TF summary merge op. and session configuration
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # step, summary, checkpoint hook setting
-            summarydir = UDLI.getArgs("log_out")
-            stophooks = tf.train.StopAtStepHook(last_step=train_iter)
-
-            # if option is restore, check the existing checkpoint file
-            if learning_option.get('option') == 'RETRAIN':
-                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
-                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
 
             # open TF session
-            # TODO: TF v1.1.0 not support to save checkpoint by step count. use hook
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
-                                                   hooks=[stophooks], save_checkpoint_steps=ckpt_interval,
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
                                                    checkpoint_dir=ckpt_dir,
                                                    save_summaries_steps=train_dp,
                                                    summary_dir=summarydir,
                                                    log_step_count_steps=0,
                                                    config=config) as sess:
+                summary_writer = SummaryWriterCache.get(summarydir)
                 current_epoch = 0
                 while not sess.should_stop():
                     if initial_state is not None:
@@ -1409,41 +1745,49 @@ class tf_adaptor:
                                 print(format_str.format(
                                     current_epoch + step_per_epoch * 1.0 / train_epoch_size,
                                     step, train_loss, time.time() - start_time))
-                    if acc_op is not None and step % test_interval == 0:  # display testing result
-                        print('Testing......')
-                        # calculate average accuracy during test iterations
-                        test_iters = 0
-                        test_losses = 0.0
-                        if initial_state is not None:
-                            batched_x, batched_y = test_reader.next_batch()
-                            test_state = sess.run(initial_state,
-                                                  feed_dict={batch_x: batched_x, batch_y: batched_y})
-                        else:  # TODO: unable condition
-                            test_state = None
-                        test_epoch_size = test_reader.get_epoch_size()
-                        for test_step in range(test_iter):  # during test iterations
-                            batched_x, batched_y = test_reader.next_batch()  # get test batch
-                            feed_dict = {}
-                            feed_dict[batch_x] = batched_x
-                            feed_dict[batch_y] = batched_y
-                            feed_dict[is_train] = False
-                            for i, (c, h) in enumerate(initial_state):
-                                feed_dict[c] = test_state[i].c
-                                feed_dict[h] = test_state[i].h
 
-                            test_loss, test_fin_stat = sess.run([loss_op, final_state],
-                                                                feed_dict)
-                            test_state = test_fin_stat
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            # calculate average accuracy during test iterations
+                            test_iters = 0
+                            test_losses = 0.0
+                            if initial_state is not None:
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_state = sess.run(initial_state,
+                                                      feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            else:  # TODO: unable condition
+                                test_state = None
+                            test_epoch_size = test_reader.get_epoch_size()
+                            for test_step in range(test_iter):  # during test iterations
+                                batched_x, batched_y = test_reader.next_batch()  # get test batch
+                                feed_dict = {}
+                                feed_dict[batch_x] = batched_x
+                                feed_dict[batch_y] = batched_y
+                                feed_dict[is_train] = False
+                                for i, (c, h) in enumerate(initial_state):
+                                    feed_dict[c] = test_state[i].c
+                                    feed_dict[h] = test_state[i].h
 
-                            test_losses += test_loss
-                            test_iters += num_steps
-                        print(format_str_test.format(0.0 + test_iter * 1.0 / test_epoch_size,
-                                                     step, acc_layer.type,
-                                                     np.exp(test_losses / test_iters)))
+                                test_loss, test_fin_stat = sess.run([loss_op, final_state],
+                                                                    feed_dict)
+                                test_state = test_fin_stat
+
+                                test_losses += test_loss
+                                test_iters += num_steps
+                            summary = tf.Summary(
+                                value=[tf.Summary.Value(tag=acc_layer.type, simple_value=np.exp(test_losses / test_iters))
+                                       ])
+                            summary_writer.add_summary(summary, 0.0 + test_iter * 1.0 / test_epoch_size)
+                            print(format_str_test.format(0.0 + test_iter * 1.0 / test_epoch_size,
+                                                         step, acc_layer.type,
+                                                         np.exp(test_losses / test_iters)))
                     current_epoch += 1
         elif input_layer.type == 'csv_input': # not yet used
             pass
         elif input_layer.type == 'bodydata_input':
+            network.run(learning_option, cluster)  # bulid TF model
+
             # get all loss, train_op, acc layers
             opt_layer = network.get_layer_by_type('adam|sgd|momentum|rmsprop|nesterov|adadelta|adagrad')  # get optimizer layer
             convnet_train_op = None
@@ -1491,25 +1835,7 @@ class tf_adaptor:
             # load input reader
             in_reader = BODYDATAreader(train_dir, False)
 
-            # TF summary merge op. and session configuration
-            config = tf.ConfigProto()  # ocnfiguration object for session
-            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
-            config.log_device_placement = False  # not loggging ops/vars-devices mapping
-            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
-
-            # not used in this model
-            #stophooks = tf.train.StopAtStepHook(last_step=train_iter)
-            summarydir = UDLI.getArgs('log_out')
-            ckptdir = UDLI.getArgs('parameter_out')
-
-            #merged
-            # TODO: THIS VERSION IS MANUAL SEARCH
-            # merged = tf.summary.merge_all()
-
-            train_writer = tf.summary.FileWriter(summarydir)
-
             # open TF session
-            # TODO: TF v1.1.0 not support to save checkpoint by step count. use hook
             with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
                                                    save_checkpoint_steps=ckpt_interval,
                                                    save_summaries_steps=train_dp,
@@ -1517,7 +1843,7 @@ class tf_adaptor:
                                                    checkpoint_dir=ckpt_dir,
                                                    log_step_count_steps=0,
                                                    config=config) as sess:
-
+                summary_writer = SummaryWriterCache.get(summarydir)
                 print('(1) ConvNet training w/ BT and BS image -------------------------')
                 for step in range(train_iter):
                     batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label= in_reader.next_batch(train_bs, is_train=True)
@@ -1596,10 +1922,853 @@ class tf_adaptor:
             reg_error_rate_list = np.concatenate(reg_error_rate_list, 0)
             msg = '(5) Avg. Error Rate for Each Item: {0}, Median Error Rate for Each Item: {1}, Third Quarter of Error Rate for Each Item: {2}'
             print(msg.format(np.mean(reg_error_rate_list, 0), np.median(reg_error_rate_list, 0), np.percentile(reg_error_rate_list, 75, axis=0)))
+
+        elif input_layer.type == 'imagenet_input':
+            # get option attributes
+            is_shuffle = True  # TODO: always true
+            # get reader class for training data
+            train_reader = IMAGENETreader(train_dir, train_bs, is_shuffle, is_train=1)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_reader = IMAGENETreader(test_dir, test_bs, is_shuffle, is_train=0)
+                learning_option['test_imagenet'] = test_reader.next_batch()
+
+            learning_option['train_imagenet'] = train_reader.next_batch()
+
+            network.run(learning_option, cluster)  # bulid TF model
+            # get operations
+            is_train = learning_option.get('is_train')  # placeholder to set procedure
+            # get loss op.
+            loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+            # get opt. op.
+            train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+            # get accuracy layer and operation
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            if acc_layer == []:  # no acc op
+                print('[DLMDL] no accuracy related layer in model')
+                acc_op = None
+            else:
+                acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+                print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+                acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
+            # print format
+            format_str = '[{0:>6} Steps] Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>6} Steps] Train Loss:{1:>8.3f}, Train {2}:{3:>8.3%}({4:>8.3f} sec/batch)'
+            format_str_test = '[{0:>6} Steps] Average Test {1}:{2:>8.3%}'
+
+            # open TF session
+            with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
+                                                   hooks=[stophooks],
+                                                   save_checkpoint_steps=ckpt_interval,
+                                                   checkpoint_dir=ckpt_dir,
+                                                   summary_dir=summarydir,
+                                                   save_summaries_steps=train_dp,
+                                                   log_step_count_steps=0,
+                                                   config=config) as sess:
+                summary_writer = SummaryWriterCache.get(summarydir)
+                while not sess.should_stop():
+                    start_time = time.time()
+                    # one step training
+                    _, step = sess.run([train_op, global_step])
+                    if step % train_dp == 0:  # display training result
+                        if acc_op is not None:  # exist accuracy op. in graph
+                            # calculate batch loss and accuracy
+                            train_loss, train_acc = sess.run([loss_op, acc_op])
+                            print(
+                                format_str_acc.format(step, train_loss, acc_layer.type, train_acc,
+                                                      time.time() - start_time))
+                        else:  # no acc op.
+                            # calculate batch loss
+                            train_loss = sess.run(loss_op)
+                            print(format_str.format(step, train_loss, time.time() - start_time))
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            test_loss_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                test_acc, test_loss = sess.run([acc_op, loss_op], feed_dict={is_train: False})
+                                test_acc_mean += test_acc
+                                test_loss_mean += test_loss
+                            test_acc_mean = test_acc_mean / test_iter
+                            test_loss_mean = test_loss_mean / test_iter
+                            summary = tf.Summary(
+                                value=[tf.Summary.Value(tag='test_accuracy', simple_value=test_acc_mean),
+                                       tf.Summary.Value(tag='test_loss', simple_value=test_loss_mean)
+                                       ])
+                            summary_writer.add_summary(summary, step)
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
         # close processes
         # WARNINNG: In release, ssh handler don't include
         #for conn in conns:
         #    del conn
+
+    @staticmethod
+    def worker_executor_mb(UDLI, cluster, server, learning_option, network, worker_idx):
+        current_address = tf_adaptor.resolve_address()  # get address of this node
+        print('[DLMDL] worker ip: {0}, worker index: {1}'.format(current_address, worker_idx))
+        network.run(learning_option, cluster)  # bulid TF model
+
+        # WARNING: parameter server must be last number which is bottom worker in .dlmdl cluster
+        #          In release version, ssh handler don't include
+        # conns = tf_adaptor.launch_slaves(UDLI, cluster.get('ips')[1:])
+
+        # get layers: assume input/loss/optimizer must exist, but accuracy layer is optional
+        input_layer = network.get_layer_by_type('input$').pop()  # get input layer
+        print('[DLMDL] datasets({0}) training'.format(input_layer.type))
+        loss_layer = network.get_layer_by_type('loss$').pop()  # get loss layer
+        print('[DLMDL] using {0} as cost of model'.format(loss_layer.type))
+        opt_layer = network.get_layer_by_type(
+            'adam|sgd|momentum|rmsprop|nesterov|adadelta|adagrad').pop()  # get optimizer layer
+        print('[DLMDL] using {0} as optimizer of model'.format(opt_layer.type))
+        global_step = tf.train.get_or_create_global_step()  # get global step
+
+        # get operations
+        is_train = learning_option.get('is_train')  # placeholder to set procedure
+        # get loss op.
+        loss_op = loss_layer.get_op_output('output')  # output op of loss layer is only 'loss'
+        # get opt. op.
+        train_op = opt_layer.get_op_output('output')  # output op of opt. layer is only 'output'
+
+        # get accuracy layer and operation
+        # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+        acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+        if acc_layer == []:  # no acc op
+            print('[DLMDL] no accuracy related layer in model')
+            acc_op = None
+        else:
+            acc_layer = network.get_layer_by_type('accuracy|perplexity').pop()
+            print('[DLMDL] using {0} as accuracy of model'.format(acc_layer.type))
+            acc_op = acc_layer.get_op_output('output')  # output op of accuracy layer is only 'output'
+
+        # TODO: error handling in learning option
+        print('[DLMDL] learning option parsing...')
+        # options related to training
+        train_dir = learning_option.get('data_path')
+        train_iter = learning_option.get('iteration')
+        train_bs = learning_option.get('batch_size')
+        train_dp = learning_option.get('train_display')
+
+        # options related to test
+        test_interval = learning_option.get('test_interval')
+        test_dir = learning_option.get('test_data_path')
+        test_iter = learning_option.get('test_iteration')
+        test_bs = learning_option.get('test_batch_size')
+
+        # options related to checkpoint
+        ckpt_interval = learning_option.get('checkpoint_interval')
+        if ckpt_interval is None:
+            ckpt_interval = train_iter + 1
+        ckpt_dir = learning_option.get('checkpoint_path')
+
+        if input_layer.type == 'jpeg_input':  # for jpeg_input
+            # get input placeholders.
+            batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
+            batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
+
+            # print format
+            format_str = '[{0:>6} Steps] Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>6} Steps] Train Loss:{1:>8.3f}, Train {2}:{3:>8.3%}({4:>8.3f} sec/batch)'
+            format_str_test = '[{0:>6} Steps] Average Test {1}:{2:>8.3%}'
+
+            # get option attributes
+            image_size = learning_option.get('image_size')
+            is_shuffle = learning_option.get('shuffle')
+            num_classes = learning_option.get('num_class')
+
+            # get reader class for training data
+            train_label_dir = learning_option.get('label_path')
+            train_reader = JPEGreader(train_dir, train_label_dir, train_bs,
+                                      image_size, is_shuffle, num_classes)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_label_dir = learning_option.get('test_label_path')
+                test_reader = JPEGreader(test_dir, test_label_dir, test_bs,
+                                         image_size, is_shuffle, num_classes)
+
+            # TF summary merge op. and session configuration
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # step, summary, checkpoint hook setting
+            summarydir = UDLI.getArgs('log_out')
+
+            # TODO: not implement
+            # if option is restore, check the existing checkpoint file
+            '''
+            if learning_option.get('option') == 'RETRAIN':
+                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
+                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
+                train_iter = train_iter - prev_iter
+            '''
+
+            merged = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            init_op = tf.global_variables_initializer()
+            sv = tf.train.Supervisor(is_chief=(worker_idx == 0),
+                                     global_step=global_step,
+                                     init_op=init_op,
+                                     local_init_op=init_op)
+            with sv.managed_session(server, config=config) as sess:
+                step = 0
+                while step < train_iter:
+                    start_time = time.time()
+                    # one step training
+                    batched_x, batched_y = train_reader.next_batch()
+                    _, step = sess.run([train_op, global_step],
+                                       feed_dict={batch_x: batched_x, batch_y: batched_y})
+                    if step % train_dp == 0:  # display training result
+                        if acc_op is not None:  # exist accuracy op. in graph
+                            # calculate batch loss and accuracy
+                            train_loss, train_acc = sess.run([loss_op, acc_op],
+                                                             feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(
+                                format_str_acc.format(step, train_loss, acc_layer.type, train_acc,
+                                                      time.time() - start_time))
+                        else:  # no acc op.
+                            # calculate batch loss
+                            train_loss = sess.run(loss_op,
+                                                  feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(format_str.format(step, train_loss, time.time() - start_time))
+                        # write summary
+                        summary = sess.run(merged, feed_dict={batch_x: batched_x, batch_y: batched_y})
+                        train_writer.add_summary(summary, step)
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc = sess.run(acc_op,
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                            test_acc_mean = test_acc_mean / test_iter
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+        elif input_layer.type == 'database_input':  # not yet used
+            pass
+        elif input_layer.type == 'mnist_input':
+            # get input placeholders.
+            batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
+            batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
+
+            # print format
+            format_str = '[{0:>6} Steps] Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>6} Steps] Train Loss:{1:>8.3f}, Train {2}:{3:>8.3%}({4:>8.3f} sec/batch)'
+            format_str_test = '[{0:>6} Steps] Average Test {1}:{2:>8.3%}'
+
+            # get option attributes
+            is_shuffle = True  # TODO: always true
+
+            # get reader class for training data
+            train_reader = MNISTreader(train_dir, train_bs, is_shuffle, istrain=1)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_reader = MNISTreader(test_dir, test_bs, is_shuffle, istrain=0)
+
+            if input_layer.get_attr('num_steps') is not None:  # only for training RNN with MNIST
+                num_units = 28  # fixed
+                num_steps = input_layer.get_attr('num_steps')
+
+            # TF summary merge op. and session configuration
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # step, summary, checkpoint hook setting
+            summarydir = UDLI.getArgs('log_out')
+
+            # TODO: not implement
+            # if option is restore, check the existing checkpoint file
+            '''
+            if learning_option.get('option') == 'RETRAIN':
+                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
+                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
+                train_iter = train_iter - prev_iter
+            '''
+
+            merged = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            init_op = tf.global_variables_initializer()
+            sv = tf.train.Supervisor(is_chief=(worker_idx == 0),
+                                     global_step=global_step,
+                                     init_op=init_op,
+                                     local_init_op=init_op)
+            with sv.managed_session(server, config=config) as sess:
+                step = 0
+                while step < train_iter:
+                    start_time = time.time()
+                    # one step training
+                    batched_x, batched_y = train_reader.next_batch()
+                    if input_layer.get_attr('num_steps') is not None:  # only for training RNN with MNIST
+                        batched_x = batched_x.reshape((train_bs, num_steps, num_units))
+                    _, step = sess.run([train_op, global_step],
+                                       feed_dict={batch_x: batched_x, batch_y: batched_y})
+                    if step % train_dp == 0:  # display training result
+                        if acc_op is not None:  # exist accuracy op. in graph
+                            # calculate batch loss and accuracy
+                            train_loss, train_acc = sess.run([loss_op, acc_op],
+                                                             feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(
+                                format_str_acc.format(step, train_loss, acc_layer.type, train_acc,
+                                                      time.time() - start_time))
+                        else:  # no acc op.
+                            # calculate batch loss
+                            train_loss = sess.run(loss_op,
+                                                  feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(format_str.format(step, train_loss, time.time() - start_time))
+                        # write summary
+                        summary = sess.run(merged, feed_dict={batch_x: batched_x, batch_y: batched_y})
+                        train_writer.add_summary(summary, step)
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                if learning_option.get('num_steps') is not None:  # only for training RNN with MNIST
+                                    batched_x = batched_x.reshape((train_bs, num_steps, num_units))
+                                test_acc = sess.run(acc_op,
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                            test_acc_mean = test_acc_mean / test_iter
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+        elif input_layer.type == 'cifar10_input':
+            # get input placeholders.
+            batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
+            batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
+
+            # print format
+            format_str = '[{0:>6} Steps] Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>6} Steps] Train Loss:{1:>8.3f}, Train {2}:{3:>8.3%}({4:>8.3f} sec/batch)'
+            format_str_test = '[{0:>6} Steps] Average Test {1}:{2:>8.3%}'
+
+            # get option attributes
+            is_shuffle = True  # TODO: always true
+
+            # get reader class for training data
+            train_reader = CIFAR10reader(train_dir, train_bs, is_shuffle, istrain=1)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_reader = CIFAR10reader(test_dir, test_bs, is_shuffle, istrain=0)
+
+            # TF summary merge op. and session configuration
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # step, summary, checkpoint hook setting
+            summarydir = UDLI.getArgs('log_out')
+            # TODO: not implement
+            # if option is restore, check the existing checkpoint file
+            '''
+            if learning_option.get('option') == 'RETRAIN':
+                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
+                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
+                train_iter = train_iter - prev_iter
+            '''
+
+            merged = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            init_op = tf.global_variables_initializer()
+            sv = tf.train.Supervisor(is_chief=(worker_idx == 0),
+                                     global_step=global_step,
+                                     init_op=init_op,
+                                     local_init_op=init_op)
+            with sv.managed_session(server, config=config) as sess:
+                step = 0
+                while step < train_iter:
+                    start_time = time.time()
+                    # one step training
+                    batched_x, batched_y = train_reader.next_batch()
+                    _, step = sess.run([train_op, global_step],
+                                       feed_dict={batch_x: batched_x, batch_y: batched_y})
+                    if step % train_dp == 0:  # display training result
+                        if acc_op is not None:  # exist accuracy op. in graph
+                            # calculate batch loss and accuracy
+                            train_loss, train_acc = sess.run([loss_op, acc_op],
+                                                             feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(
+                                format_str_acc.format(step, train_loss, acc_layer.type, train_acc,
+                                                      time.time() - start_time))
+                        else:  # no acc op.
+                            # calculate batch loss
+                            train_loss = sess.run(loss_op,
+                                                  feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(format_str.format(step, train_loss, time.time() - start_time))
+
+                        # write summary
+                        summary = sess.run(merged, feed_dict={batch_x: batched_x, batch_y: batched_y})
+                        train_writer.add_summary(summary, step)
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc = sess.run(acc_op,
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                            test_acc_mean = test_acc_mean / test_iter
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+        elif input_layer.type == 'glaucoma_input':
+            # data augumentation for glaucoma images - refered from original source code -twkim
+            def data_aug(data, labels):
+                aug_data1 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 0, 0, 224, 224), data)
+                aug_data2 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 0, 16, 224, 224), data)
+                aug_data3 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 16, 16, 224, 224), data)
+                aug_data4 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 16, 10, 224, 224), data)
+                aug_data5 = tf.map_fn(lambda img: tf.image.central_crop(img, 0.93), data)
+                flips = tf.map_fn(lambda img: tf.image.random_flip_left_right(img), data)
+                aug_data6 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 0, 0, 224, 224), flips)
+                aug_data7 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 0, 16, 224, 224), flips)
+                aug_data8 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 16, 16, 224, 224), flips)
+                aug_data9 = tf.map_fn(lambda img: tf.image.crop_to_bounding_box(img, 16, 10, 224, 224), flips)
+                aug_data10 = tf.map_fn(lambda img: tf.image.central_crop(img, 0.93), data)
+                # concat_data = data
+                # concat_labels = labels
+                concat_data = tf.concat((aug_data1, aug_data2, aug_data3, aug_data4, aug_data5,
+                                         aug_data6, aug_data7, aug_data8, aug_data9,
+                                         aug_data10), axis=0)
+                concat_labels = tf.concat((labels, labels, labels, labels, labels,
+                                           labels, labels, labels, labels, labels), axis=0)
+                return (concat_data, concat_labels)
+
+            # get input placeholders.
+            batch_x = input_layer.get_op_output('image')  # image/data/text/... (data info.)
+            batch_y = input_layer.get_op_output('label')  # labels/targets/... (label info.)
+
+            # define placeholder for preprocessing raw images
+            images_raw = tf.placeholder(tf.float32, shape=(None, 240, 240, 3), name='glaucoma_raw_images')
+            labels_raw = tf.placeholder(tf.int32, shape=(None, 2), name='glaucoma_raw_labels')
+
+            with tf.device('/cpu:0'):
+                augmented_train_images, augmented_train_labels = data_aug(images_raw, labels_raw)
+                augmented_test_images, augmented_test_labels = data_aug(images_raw, labels_raw)
+
+            # print format
+            format_str = '[{0:>6} Steps] Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>6} Steps] Train Loss:{1:>8.3f}, Train {2}:{3:>8.3%}({4:>8.3f} sec/batch)'
+            format_str_test = '[{0:>6} Steps] Average Test {1}:{2:>8.3%}'
+
+            # get option attributes
+            is_shuffle = learning_option.get('shuffle')
+
+            # get reader class for training data
+            # train_images = open(train_dir + '/train_dataset.npy')
+            train_images = open(train_dir + '/train_dataset.npy')
+            train_labels = open(train_dir + '/train_labels.npy')
+            raw_train_images = np.load(train_images)
+            raw_train_labels = np.load(train_labels)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_images = open(train_dir + '/test_dataset.npy')
+                test_labels = open(train_dir + '/test_labels.npy')
+                raw_test_images = np.load(test_images)
+                raw_test_labels = np.load(test_labels)
+
+            # TF summary merge op. and session configuration
+            merged = tf.summary.merge_all()  # merge summary data
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # step, summary, checkpoint hook setting
+            summarydir = UDLI.getArgs('log_out')
+            # TODO: not implement
+            # if option is restore, check the existing checkpoint file
+            '''
+            if learning_option.get('option') == 'RETRAIN':
+                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
+                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
+                train_iter = train_iter - prev_iter
+            '''
+
+            merged = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            init_op = tf.global_variables_initializer()
+            sv = tf.train.Supervisor(is_chief=(worker_idx == 0),
+                                     global_step=global_step,
+                                     init_op=init_op,
+                                     local_init_op=init_op)
+            with sv.managed_session(server, config=config) as sess:
+
+                # load arugmented data w.r.t training/test dataset
+                tmp_x = np.zeros([1, 224, 224, 3], dtype=np.float32)
+                tmp_y = np.zeros([1, 2], dtype=np.float32)
+
+                train_images_aug, train_labels_aug = sess.run([augmented_train_images, augmented_train_labels],
+                                                              feed_dict={images_raw: raw_train_images,
+                                                                         labels_raw: raw_train_labels,
+                                                                         batch_x: tmp_x, batch_y: tmp_y})
+                train_reader = GLAUCOMAreader(train_dir, train_bs, is_shuffle,
+                                              train_images_aug, train_labels_aug)
+                if acc_op is not None:
+                    test_images_aug, test_labels_aug = sess.run([augmented_test_images, augmented_test_labels],
+                                                                feed_dict={images_raw: raw_test_images,
+                                                                           labels_raw: raw_test_labels,
+                                                                           batch_x: tmp_x, batch_y: tmp_y})
+                    test_reader = GLAUCOMAreader(test_dir, test_bs, is_shuffle,
+                                                 test_images_aug, test_labels_aug)
+                step = 0
+                while step < train_iter:
+                    start_time = time.time()
+                    # one step training
+                    batched_x, batched_y = train_reader.next_batch()
+                    _, step = sess.run([train_op, global_step],
+                                       feed_dict={batch_x: batched_x, batch_y: batched_y})
+                    if step % train_dp == 0:  # display training result
+                        if acc_op is not None:  # exist accuracy op. in graph
+                            # calculate batch loss and accuracy
+                            train_loss, train_acc = sess.run([loss_op, acc_op],
+                                                             feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(
+                                format_str_acc.format(step, train_loss, acc_layer.type, train_acc,
+                                                      time.time() - start_time))
+                        else:  # no acc op.
+                            # calculate batch loss
+                            train_loss = sess.run(loss_op,
+                                                  feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            print(format_str.format(step, train_loss, time.time() - start_time))
+                        # write summary
+                        summary = sess.run(merged, feed_dict={batch_x: batched_x, batch_y: batched_y})
+                        train_writer.add_summary(summary, step)
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            test_acc_mean = 0.0
+                            for i in xrange(1, test_iter):
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_acc = sess.run(acc_op,
+                                                    feed_dict={batch_x: batched_x, batch_y: batched_y,
+                                                               is_train: False})
+                                test_acc_mean += test_acc
+                            test_acc_mean = test_acc_mean / test_iter
+                            print(format_str_test.format(step, acc_layer.type, test_acc_mean))
+        elif input_layer.type == 'ptb_input':
+
+            # get input placeholders.
+            batch_x = learning_option.get('data_placeholder')  # image/data/text/... (data info.)
+            batch_y = input_layer.get_op_output('targets')  # labels/targets/... (label info.)
+
+            # print format
+            format_str = '[{0:>3.2f} Epochs, {1:>6} Steps] Train Loss:{2:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_acc = '[{0:>3.2f} Epochs, {1:>6} Steps] Train Loss:{2:>8.3f}, Train {3}:{4:>8.3f}({5:>8.3f} sec/batch)'
+            format_str_test = '[{0:>3.2f} Epochs, {1:>6} Steps] Average Test {2}:{3:>8.3f}'
+
+            initial_state = learning_option.get('initial_state')  # get TF initial state op.
+            # WARNINIG: if there is other op. added to static_rnn, use meta character '|'
+            # e.g 'static_rnn|static_bidirectional_rnn' --> detect static_rnn or static_bidirectional_rnn op.
+            final_state = network.get_layer_by_type('static_rnn').pop().get_op_output(
+                'state')  # get TF output state op.
+
+            # get option attributes
+            num_steps = learning_option.get('num_steps')
+            hidden_size = learning_option.get('hidden_size')
+            num_class = learning_option.get('num_class')  # 10000: fixed classes
+
+            # get reader class for training data
+            train_reader = PTBreader(train_dir, train_bs, num_steps, istrain=True)
+            if test_dir is None:  # if no test dataset
+                test_reader = None
+            else:  # get reader class for testing data
+                test_reader = PTBreader(test_dir, test_bs, num_steps, istrain=False)
+
+            # TF summary merge op. and session configuration
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # step, summary, checkpoint hook setting
+            summarydir = UDLI.getArgs("log_out")
+            # TODO: not implement
+            # if option is restore, check the existing checkpoint file
+            '''
+            if learning_option.get('option') == 'RETRAIN':
+                if len(glob.glob(ckpt_dir + '/*.meta')) == 0:
+                    raise Exception('[DLMDL ERROR] checkpoint file(.meta) do not exist in {0}'.format(ckpt_dir))
+                last_ckpt_filename = os.path.basename(glob.glob(ckpt_dir + '/*.meta')[-1])
+                prev_iter = int(re.findall('\d+', last_ckpt_filename)[0])
+                train_iter = train_iter - prev_iter
+            '''
+
+            merged = tf.summary.merge_all()
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            init_op = tf.global_variables_initializer()
+            sv = tf.train.Supervisor(is_chief=(worker_idx == 0),
+                                     global_step=global_step,
+                                     init_op=init_op,
+                                     local_init_op=init_op)
+            with sv.managed_session(server, config=config) as sess:
+                step = 0
+                current_epoch = 0
+                while step < train_iter:
+                    if initial_state is not None:
+                        batched_x, batched_y = train_reader.next_batch()
+                        state = sess.run(initial_state,
+                                         feed_dict={batch_x: batched_x,
+                                                    batch_y: batched_y})
+                    else:  # TODO: unable condition
+                        state = None
+                    train_epoch_size = train_reader.get_epoch_size()
+                    for step_per_epoch in range(train_epoch_size):
+                        # run one epoch
+                        start_time = time.time()
+                        feed_dict = {}
+                        # one step training
+                        batched_x, batched_y = train_reader.next_batch()
+                        feed_dict[batch_x] = batched_x
+                        feed_dict[batch_y] = batched_y
+                        feed_dict[is_train] = True
+                        for i, (c, h) in enumerate(initial_state):
+                            feed_dict[c] = state[i].c
+                            feed_dict[h] = state[i].h
+                        _, fin_stat, step = sess.run([train_op, final_state, global_step], feed_dict)
+                        state = fin_stat
+                        if step % train_dp == 0:  # display training result
+                            if acc_op is not None:  # exist accuracy op. in graph
+                                # calculate batch loss and accuracy
+                                train_loss, train_acc = sess.run([loss_op, acc_op],
+                                                                 feed_dict)
+                                print(format_str_acc.format(current_epoch + step_per_epoch * 1.0 / train_epoch_size,
+                                                            step, train_loss, acc_layer.type, train_acc,
+                                                            time.time() - start_time))
+                            else:  # no acc op.
+                                # calculate batch loss
+                                train_loss = sess.run(loss_op, feed_dict)
+                                print(format_str.format(
+                                    current_epoch + step_per_epoch * 1.0 / train_epoch_size,
+                                    step, train_loss, time.time() - start_time))
+                            # write summary
+                            summary = sess.run(merged, feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            train_writer.add_summary(summary, step)
+                    if test_interval is not None:
+                        if acc_op is not None and step % test_interval == 0:  # display testing result
+                            print('Testing......')
+                            # calculate average accuracy during test iterations
+                            test_iters = 0
+                            test_losses = 0.0
+                            if initial_state is not None:
+                                batched_x, batched_y = test_reader.next_batch()
+                                test_state = sess.run(initial_state,
+                                                      feed_dict={batch_x: batched_x, batch_y: batched_y})
+                            else:  # TODO: unable condition
+                                test_state = None
+                            test_epoch_size = test_reader.get_epoch_size()
+                            for test_step in range(test_iter):  # during test iterations
+                                batched_x, batched_y = test_reader.next_batch()  # get test batch
+                                feed_dict = {}
+                                feed_dict[batch_x] = batched_x
+                                feed_dict[batch_y] = batched_y
+                                feed_dict[is_train] = False
+                                for i, (c, h) in enumerate(initial_state):
+                                    feed_dict[c] = test_state[i].c
+                                    feed_dict[h] = test_state[i].h
+
+                                test_loss, test_fin_stat = sess.run([loss_op, final_state],
+                                                                    feed_dict)
+                                test_state = test_fin_stat
+
+                                test_losses += test_loss
+                                test_iters += num_steps
+                            print(format_str_test.format(0.0 + test_iter * 1.0 / test_epoch_size,
+                                                         step, acc_layer.type,
+                                                         np.exp(test_losses / test_iters)))
+                    current_epoch += 1
+        elif input_layer.type == 'csv_input':  # not yet used
+            pass
+        elif input_layer.type == 'bodydata_input':
+            # get all loss, train_op, acc layers
+            opt_layer = network.get_layer_by_type(
+                'adam|sgd|momentum|rmsprop|nesterov|adadelta|adagrad')  # get optimizer layer
+            convnet_train_op = None
+            others_train_op = None
+            whole_train_op = None
+            for layer in opt_layer:
+                if layer.get_attr('scope') == 'convnet':
+                    convnet_train_op = layer.get_op_output('output')
+                elif layer.get_attr('scope') == 'others':
+                    others_train_op = layer.get_op_output('output')
+                else:
+                    whole_train_op = layer.get_op_output('output')
+
+            convnet_loss_op = network.get_layer('convnet_loss').get_op_output('output')
+            total_loss_op = network.get_layer('total_loss').get_op_output('output')
+            others_op = network.get_layer('above_net_fc1').get_op_output('output')
+
+            # WARNING: current accuracy related layers -> accuracy/top-k layer, perplexity layer
+            acc_layer = network.get_layer_by_type('accuracy|perplexity')  # get acc layer
+            bt_acc_op = None
+            bs_acc_op = None
+            full_bt_acc_op = None
+            full_bs_acc_op = None
+            for layer in acc_layer:
+                if layer.name == 'bt_acc':
+                    bt_acc_op = layer.get_op_output('output')
+                elif layer.name == 'bs_acc':
+                    bs_acc_op = layer.get_op_output('output')
+                elif layer.name == 'full_bt_acc':
+                    full_bt_acc_op = layer.get_op_output('output')
+                elif layer.name == 'full_bs_acc':
+                    full_bs_acc_op = layer.get_op_output('output')
+
+            batch_image_x = input_layer.get_op_output('image')
+            batch_bt_label_y = input_layer.get_op_output('bt_label')
+            batch_bs_label_y = input_layer.get_op_output('bs_label')
+            batch_numeric_x = input_layer.get_op_output('numeric')
+            batch_numeric_label_y = input_layer.get_op_output('numeric_label')
+
+            # print format
+            format_str_convnet = '[{0:>6} Steps] Convnet Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_others = '[{0:>6} Steps] OthersNet Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+            format_str_full = '[{0:>6} Steps] Full Train Loss:{1:>8.3f}({2:>8.3f} sec/batch)'
+
+            # load input reader
+            in_reader = BODYDATAreader(train_dir, False)
+
+            # TF summary merge op. and session configuration
+            config = tf.ConfigProto()  # ocnfiguration object for session
+            config.gpu_options.allow_growth = True  # allocate minimum GPU memory for running
+            config.log_device_placement = False  # not loggging ops/vars-devices mapping
+            config.allow_soft_placement = True  # automatically unallocated ops/vars to device
+
+            # not used in this model
+            # stophooks = tf.train.StopAtStepHook(last_step=train_iter)
+            summarydir = UDLI.getArgs('log_out')
+            ckptdir = UDLI.getArgs('parameter_out')
+
+            # merged
+            # TODO: THIS VERSION IS MANUAL SEARCH
+            # merged = tf.summary.merge_all()
+
+            train_writer = tf.summary.FileWriter(summarydir)
+
+            # open TF session
+            with tf.train.MonitoredTrainingSession(master=server, is_chief=(worker_idx == 0),
+                                                   save_checkpoint_steps=ckpt_interval,
+                                                   save_summaries_steps=train_dp,
+                                                   summary_dir=summarydir,
+                                                   checkpoint_dir=ckpt_dir,
+                                                   log_step_count_steps=0,
+                                                   config=config) as sess:
+
+                print('(1) ConvNet training w/ BT and BS image -------------------------')
+                for step in range(train_iter):
+                    batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label = in_reader.next_batch(
+                        train_bs, is_train=True)
+                    start_time = time.time()
+                    convnet_train_loss, _ = sess.run([convnet_loss_op, convnet_train_op],
+                                                     feed_dict={batch_image_x: batched_image,
+                                                                batch_bt_label_y: batched_bt_label,
+                                                                batch_bs_label_y: batched_bs_label,
+                                                                batch_numeric_x: batched_numeric,
+                                                                batch_numeric_label_y: batched_numeric_label})
+
+                    if step % train_dp == 0:
+                        print(format_str_convnet.format(step, convnet_train_loss, time.time() - start_time))
+                        # train_writer.add_summary(summ, step)
+
+                print('(2) on the mid of train--------------------------------')
+                for _ in range(30):
+                    batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label = in_reader.next_batch(
+                        train_bs, is_train=False)
+                    reg_output, bt_acc, bs_acc = sess.run([others_op, bt_acc_op, bs_acc_op],
+                                                          feed_dict={batch_image_x: batched_image,
+                                                                     batch_bt_label_y: batched_bt_label,
+                                                                     batch_bs_label_y: batched_bs_label,
+                                                                     batch_numeric_x: batched_numeric,
+                                                                     batch_numeric_label_y: batched_numeric_label})
+                print ('(2) Body Type Accuracy: {0:>5.3%}, Body Shape Accuracy: {1:>5.3%}'.format(bt_acc, bs_acc))
+                print('(3)--------------------------------------------------')
+                for step in range(train_iter):
+                    batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label = in_reader.next_batch(
+                        train_bs, is_train=True)
+                    start_time = time.time()
+                    total_train_loss, _ = sess.run([total_loss_op, others_train_op],
+                                                   feed_dict={batch_image_x: batched_image,
+                                                              batch_bt_label_y: batched_bt_label,
+                                                              batch_bs_label_y: batched_bs_label,
+                                                              batch_numeric_x: batched_numeric,
+                                                              batch_numeric_label_y: batched_numeric_label})
+                    if step % train_dp == 0:
+                        print(format_str_others.format(step, total_train_loss, time.time() - start_time))
+                print('(4)--------------------------------------------------')
+                for step in range(train_iter):
+                    batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label = in_reader.next_batch(
+                        train_bs, is_train=True)
+                    start_time = time.time()
+                    total_train_loss, _ = sess.run([total_loss_op, whole_train_op],
+                                                   feed_dict={batch_image_x: batched_image,
+                                                              batch_bt_label_y: batched_bt_label,
+                                                              batch_bs_label_y: batched_bs_label,
+                                                              batch_numeric_x: batched_numeric,
+                                                              batch_numeric_label_y: batched_numeric_label})
+                    if step % train_dp == 0:
+                        print(format_str_full.format(step, total_train_loss, time.time() - start_time))
+                print('TRAIN COMPLETE')
+                print('(5)--------------------------------------------------')
+                bt_acc_list = []
+                bs_acc_list = []
+                reg_error_rate_list = []
+                for _ in range(test_iter):
+                    batched_image, batched_numeric, batched_numeric_label, batched_bt_label, batched_bs_label = in_reader.next_batch(
+                        train_bs, is_train=False)
+                    reg_output, bt_acc, bs_acc = sess.run([others_op, bt_acc_op, bs_acc_op],
+                                                          feed_dict={batch_image_x: batched_image,
+                                                                     batch_bt_label_y: batched_bt_label,
+                                                                     batch_bs_label_y: batched_bs_label,
+                                                                     batch_numeric_x: batched_numeric,
+                                                                     batch_numeric_label_y: batched_numeric_label})
+                    bt_acc_list.append(bt_acc)
+                    bs_acc_list.append(bs_acc)
+                    output_std = in_reader.get_output_std()
+                    output_avg = in_reader.get_output_avg()
+
+                    reg_pred = reg_output * output_std + output_avg
+                    reg_label = batched_numeric_label * output_std + output_avg
+                    error_rate = np.abs((reg_pred - reg_label) / reg_label * 100)
+                    reg_error_rate_list.append(error_rate)
+
+            print('(5) Body Type Accuracy: {0:>5.3%}, Body Shape Accuracy: {1:>5.3%}'.format(np.mean(bt_acc_list),
+                                                                                             np.mean(bs_acc_list)))
+            reg_error_rate_list = np.concatenate(reg_error_rate_list, 0)
+            msg = '(5) Avg. Error Rate for Each Item: {0}, Median Error Rate for Each Item: {1}, Third Quarter of Error Rate for Each Item: {2}'
+            print(msg.format(np.mean(reg_error_rate_list, 0), np.median(reg_error_rate_list, 0),
+                             np.percentile(reg_error_rate_list, 75, axis=0)))
+        # close processes
+        # WARNINNG: In release, ssh handler don't include
+        # for conn in conns:
+        #    del conn
+
     @staticmethod
     def get_node_index(cluster):
         try:
@@ -1656,4 +2825,4 @@ class tf_adaptor:
 
     @staticmethod
     def t(obj):
-        return json.dumps(obj).replace('true', 'True').replace('false', 'False')
+        return json.dumps(obj).replace('true', 'True').replace('false', 'False').replace('null', 'None')

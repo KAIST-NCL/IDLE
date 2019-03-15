@@ -29,9 +29,16 @@ class op_tf_softmaxwithloss(LayerOperation):
         type = cluster.get('types')[device].replace(str(num), '')
 
         def apiConstructor():
-            #TODO: in future TF version, tf.nn.softmax_cross_entropy_with_logits will be deprecated. use softmax_cross_entropy_with_logits_v2
-            softmax_cross_entropy_with_logits = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits)
+            if learning_option.get('train_imagenet'): #TODO: tmp
+                softmax_cross_entropy_with_logits = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+            else:
+                softmax_cross_entropy_with_logits = tf.nn.softmax_cross_entropy_with_logits_v2(labels=labels, logits=logits)
+
             loss = tf.reduce_mean(softmax_cross_entropy_with_logits)
+            reg_losses = tf.losses.get_regularization_losses()
+            if len(reg_losses):
+                #TODO scope must contained
+                loss = loss + tf.add_n(reg_losses)
 
             # set output
             self.set_output('output', loss)

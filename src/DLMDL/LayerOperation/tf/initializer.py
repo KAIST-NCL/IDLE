@@ -43,7 +43,7 @@ def get_initializer(initializer, is_bias=False  ):
         std = get_value('std', default=0.01)
         seed = get_value('seed', default=None)
         init = tf.random_normal_initializer(mean=mean, stddev=std, seed=seed, dtype=tf.float32)
-    elif type == 'xaiver': # xaiver(glorot) initializer
+    elif type == 'xavier': # xavier(glorot) initializer
         mode = get_value('mode', default='IN')
         factor = get_value('factor', default=3.0)
         dist = get_value('dist', default='UNIFORM')

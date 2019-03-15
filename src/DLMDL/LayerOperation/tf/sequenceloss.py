@@ -55,6 +55,10 @@ class op_tf_sequenceloss(LayerOperation):
                                                     average_across_batch=True)
 
             loss_ = tf.reduce_sum(loss)
+            reg_losses = tf.losses.get_regularization_losses()
+            if len(reg_losses):
+                # TODO scope must contained
+                loss_ = loss_ + tf.add_n(reg_losses)
 
             # set output
             self.set_output('output', loss_)

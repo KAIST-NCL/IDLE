@@ -24,7 +24,7 @@ class op_tf_batchnorm(LayerOperation):
         # optional field
         eps = float(self.get_attr('epsilon', default=10**-5))
         moving_avg = float(self.get_attr('moving_average', default=0.999))
-        scope = self.get_attr('scope', default=self.name)
+        scope = self.get_attr('scope', default='default')
 
         is_train = learning_option.get('is_train')
 
@@ -34,25 +34,7 @@ class op_tf_batchnorm(LayerOperation):
         type = cluster.get('types')[device].replace(str(num), '')
 
         def apiConstructor():
-            beta = tf.get_variable('beta', shape=[indim[-1]], dtype=tf.float32,
-                                   initializer=tf.constant_initializer(0.0, dtype=tf.float32),
-                                   trainable=True)
-            gamma = tf.get_variable('gamma', shape=[indim[-1]], dtype=tf.float32,
-                                    initializer=tf.constant_initializer(1.0, dtype=tf.float32),
-                                    trainable=True)
-
-            batch_mean, batch_var = tf.nn.monents(input_, [0, 1, 2])
-            ema = tf.train.ExponentialMovingAverage(decay=moving_avg)
-
-            def mean_var_with_update():
-                ema_apply_op = ema.apply([batch_mean, batch_var])
-                with tf.control_dependencies([ema_apply_op]):
-                    return tf.identity(batch_mean), tf.identity(batch_var)
-
-            mean, var = tf.cond(is_train,
-                                mean_var_with_update,
-                                lambda: (ema.average(batch_mean), ema.average(batch_var)))
-            batchnorm = tf.nn.batch_normalization(input_, mean, var, beta, gamma, eps)
+            batchnorm = tf.layers.batch_normalization(input_, training=is_train)
 
             # get output dimension
             outdim = list(batchnorm.get_shape()[i].value for i in xrange(len(batchnorm.get_shape())))
@@ -65,8 +47,11 @@ class op_tf_batchnorm(LayerOperation):
             tf.summary.histogram(self.name, batchnorm)
 
         with tf.variable_scope(self.name):
-            if learning_option.get("parallel", None) != "DP":
+            if learning_option.get("parallel", None) == "MP" or learning_option.get("parallel", None) is None:
                 with tf.device('/job:worker/task:{0}/{1}:{2}'.format(device, type, num)):
+                    apiConstructor()
+            elif learning_option.get("parallel", None) == "DP_mb":
+                with tf.device('/job:worker/task:{0}/mb:0'.format(device)):
                     apiConstructor()
             else:
                 apiConstructor()

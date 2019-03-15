@@ -28,7 +28,7 @@ class op_tf_gru(LayerOperation):
         # optional field
         activation = self.get_attr('activation', default=None)
         initializer = self.get_attr('initializer', default={'weight': {}, 'bias': {}})  # default will set later
-        scope = self.get_attr('scope', default=self.name)
+        scope = self.get_attr('scope', default='default')
 
         hidden_size = learning_option.get('hidden_size') # num. of cells
         is_train = learning_option.get('is_train')

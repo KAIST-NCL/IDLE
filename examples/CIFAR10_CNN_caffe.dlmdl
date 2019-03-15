@@ -1,0 +1,452 @@
+{
+    "layers": [
+        {
+            "type": "cifar10_input",
+            "name": "Input",
+            "inputs": {},
+            "outputs": [
+                "image",
+                "label"
+            ],
+            "attributes": {
+            },
+            "device": "worker0",
+            "coord": [
+                0,
+                0
+            ]
+        },
+        {
+            "type": "conv",
+            "name": "Conv1",
+            "inputs": {
+                "input": [
+                    "Input.image"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "kernel_size": [5,5],
+                "num_output": 32,
+                "padding": "SAME",
+                "stride": 1,
+                "bias_term": true,
+                "initializer": {
+                    "weight": {
+                        "type": "normal",
+                        "mean": 0,
+                        "std": 0.0001
+                    },
+                    "bias": {
+                        "type": "constant",
+                        "value": 0
+                    }
+                },
+                "regularizer": {
+                    "type": "L2",
+                    "weight": 0.004,
+                    "bias": 0.004
+                },
+                "lr_mult": 1
+            },
+            "device": "worker0",
+            "coord": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "pooling",
+            "name": "Pool1",
+            "inputs": {
+                "input": [
+                    "Conv1.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "pool_type": "MAX",
+                "kernel_size": [3,3],
+                "stride": 2,
+                "padding": "VALID"
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "relu",
+            "name": "ReLU1",
+            "inputs":{
+                "input": [
+                    "Pool1.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "slope": 0
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "lrn",
+            "name": "LRN1",
+            "inputs": {
+                "input": [
+                    "ReLU1.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "local_size": 3,
+                "alpha": 0.00005,
+                "beta": 0.75,
+                "norm_region": "WITHIN_CHANNEL"
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv",
+            "name": "Conv2",
+            "inputs": {
+                "input": [
+                    "LRN1.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "kernel_size": [5,5],
+                "num_output": 32,
+                "padding": "SAME",
+                "stride": 1,
+                "bias_term": true,
+                "initializer": {
+                    "weight": {
+                        "type": "normal",
+                        "mean": 0,
+                        "std": 0.01
+                    },
+                    "bias": {
+                        "type": "constant",
+                        "value": 0
+                    }
+                },
+                "regularizer": {
+                    "type": "L2",
+                    "weight": 0.004,
+                    "bias": 0.004
+                },
+		        "lr_mult": 1
+            },
+            "device": "worker0",
+            "coord": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "relu",
+            "name": "ReLU2",
+            "inputs":{
+                "input": [
+                    "Conv2.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "slope": 0
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "pooling",
+            "name": "Pool2",
+            "inputs": {
+                "input": [
+                    "ReLU2.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "pool_type": "AVG",
+                "kernel_size": [3,3],
+                "stride": 2,
+                "padding": "VALID"
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "lrn",
+            "name": "LRN2",
+            "inputs": {
+                "input": [
+                    "Pool2.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "local_size": 3,
+                "alpha": 0.00005,
+                "beta": 0.75,
+                "norm_region": "WITHIN_CHANNEL"
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "conv",
+            "name": "Conv3",
+            "inputs": {
+                "input": [
+                    "LRN2.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "kernel_size": [5,5],
+                "num_output": 64,
+                "padding": "SAME",
+                "stride": 1,
+                "bias_term": true,
+                "initializer": {
+                    "weight": {
+                        "type": "normal",
+                        "mean": 0,
+                        "std": 0.01
+                    },
+                    "bias": {
+                        "type": "constant",
+                        "value": 0
+                    }
+                },
+                "regularizer": {
+                    "type": "L2",
+                    "weight": 0,
+                    "bias": 0
+                },
+		        "lr_mult": 1
+            },
+            "device": "worker0",
+            "coord": [
+                1,
+                1
+            ]
+        },
+        {
+            "type": "relu",
+            "name": "ReLU3",
+            "inputs":{
+                "input": [
+                    "Conv3.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "slope": 0
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "pooling",
+            "name": "Pool3",
+            "inputs": {
+                "input": [
+                    "ReLU3.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "pool_type": "AVG",
+                "kernel_size": [3,3],
+                "stride": 2,
+                "padding": "VALID"
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "fc",
+            "name": "Ip1",
+            "inputs": {
+                "input": [
+                    "Pool3.output"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "num_output": 10,
+                "bias_term": true,
+                "initializer": {
+                    "weight": {
+                        "type": "normal",
+                        "mean": 0,
+                        "std": 0.01
+                    },
+                    "bias": {
+                        "type": "constant",
+                        "value": 0
+                    }
+                },
+                "regularizer": {
+                    "type": "L2",
+                    "weight": 1,
+                    "bias": 0
+                }
+            },
+            "device": "worker0",
+            "coord": [
+                3,
+                3
+            ]
+        },
+        {
+            "type": "softmaxwithloss",
+            "name": "Loss1",
+            "inputs": {
+                "logits": [
+                    "Ip1.output"
+                ],
+                "labels": [
+                    "Input.label"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+            },
+            "device": "worker0",
+            "coord": [
+                2,
+                2
+            ]
+        },
+        {
+            "type": "accuracy",
+            "name": "Accuracy1",
+            "inputs": {
+                "logits": [
+                    "Ip1.output"
+                ],
+                "labels": [
+                    "Input.label"
+                ]
+            },
+            "outputs": [
+                "output"
+            ],
+            "attributes": {
+                "topk": 1
+            },
+            "device": "worker0",
+            "coord": [
+                3,
+                3
+            ]
+        },
+        {
+            "type": "momentum",
+            "name": "Optimizer1",
+            "inputs": {
+                "loss": [
+                    "Loss1.output"
+                ]
+            },
+            "outputs": [
+                "output",
+                "global_step"
+            ],
+            "attributes": {
+                "lr": 0.001,
+		        "momentum": 0.9,
+                "lr_scheduler": {
+                    "type": "fix"
+                }
+            },
+            "device": "worker0",
+            "coord": [
+                3,
+                3
+            ]
+        }
+    ],
+    "learning_option": {
+        "option": "TRAIN",
+        "file_format": "mdb",
+        "data_path": "data/datasets/cifar10/cifar10_train_lmdb",
+        "label_path": "",
+        "checkpoint_path": "output/checkpoint/cifar10_cnn",
+        "checkpoint_interval": 1000,
+        "batch_size": 100,
+        "iteration": 100000,
+        "train_display": 200,
+        "test_batch_size": 100,
+        "test_iteration": 100,
+        "test_interval": 600,
+        "test_data_path": "data/datasets/cifar10/cifar10_test_lmdb",
+        "test_label_path": ""
+    },
+    "cluster": [
+        {
+            "name": "worker0",
+            "ip": "143.248.146.157:2222",
+            "type": "gpu0",
+            "task": "worker"
+        }
+    ],
+    "createAt": "2018-10-22T11:48:00.000Z",
+    "updateAt": "2018-10-22T11:48:00.000Z",
+    "id": 1
+}

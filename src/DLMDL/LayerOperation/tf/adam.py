@@ -32,7 +32,7 @@ class op_tf_adam(LayerOperation):
         eps = float(self.get_attr('epsilon', default=10**-8))
         lr_scheduler = self.get_attr('lr_scheduler', default={}) # default will set later
         clip_grad = self.get_attr('clip_grad', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
 
         # get worker info: worker num, device type, device num
         device = self.get_attr('device')
@@ -47,7 +47,6 @@ class op_tf_adam(LayerOperation):
             else:
                 opt_vars = train_vars
 
-
             lr_method = get_lr_scheduler(lr_scheduler, lr)
             global_step = tf.train.get_or_create_global_step()
             adam = tf.train.AdamOptimizer(learning_rate=lr_method, beta1=beta1,
@@ -57,7 +56,9 @@ class op_tf_adam(LayerOperation):
                 clipped_grads = [(tf.clip_by_value(grad, -1.0*clip_grad, 1.0*clip_grad), var) for grad, var in grads]
                 train_op = adam.apply_gradients(clipped_grads, global_step=global_step)
             else:
-                train_op = adam.minimize(loss, global_step=global_step, var_list=opt_vars)
+                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                with tf.control_dependencies(update_ops):
+                    train_op = adam.minimize(loss, global_step=global_step, var_list=opt_vars)
 
             # set output
             self.set_output('output', train_op)

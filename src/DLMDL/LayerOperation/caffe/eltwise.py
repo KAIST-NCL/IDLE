@@ -28,7 +28,8 @@ class op_caffe_eltwise(LayerOperation):
             op_num = 0
         elif op == 'MAX':
             op_num = 2
-        eltwise = L.Eltwise(*input_, name=self.name, operation=op_num, coeff=scale)
+
+        eltwise = L.Eltwise(*input_, name=self.name, operation=op_num, coeff=[scale,scale])
 
         self.set_output('output', eltwise)
         self.set_dimension('output', indim[0])

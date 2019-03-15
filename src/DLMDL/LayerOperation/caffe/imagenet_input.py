@@ -4,19 +4,20 @@ from caffe import layers as L
 
 from src.DLMDL.caffe_adaptor import tempNet  #TODO: If the solver is created or changed separately in the DLMDL, review is required.
 
-#TODO: cifar10 input(data_path in learning_option) with only LMDB format
+#TODO: imagenet input(data_path in learning_option) with only LMDB format
 # In the future, DLMDL automatically downloads dataset and convert into LMDB foramt
-class op_caffe_cifar10_input(LayerOperation):
+class op_caffe_imagenet_input(LayerOperation):
     _attributes = """[]""" # TODO: TO BE DEPRECATED
 
     def compile_time_operation(self, learning_option, cluster):
+
         data_path = learning_option.get('data_path') # directory which binary files are saved
         batch_size = learning_option.get('batch_size') # train batch size
 
         # get attr
         # required field
-        backend_idx = 1 #fixed: CIFAR-10 with LMDB
-        image_size = [batch_size, 3, 32, 32] #fixed: CIFAR-10 dataset
+        backend_idx = 1 #fixed: Imagenet with LMDB
+        image_size = [batch_size, 3, 224, 224] #fixed: Imagenet dataset
 
         # for shmcaffe ETRI
         # learning_option["move_rate"] = learning_option.get("move_rate", 0.2)

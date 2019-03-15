@@ -38,23 +38,23 @@ def get_initializer(initializer, is_bias=False):
         mean = get_value('mean', default=0.0)
         std = get_value('std', default=0.01)
         init = {'type': 'gaussian', 'mean': mean, 'std': std}
-    elif type == 'xaiver': # xaiver(glorot) initializer
+    elif type == 'xavier': # xavier(glorot) initializer
         mode = get_value('mode', default='IN')
-        if mode == 'IN':
-            mode = 'FAN_IN'
-        elif mode == 'OUT':
-            mode = 'FAN_OUT'
-        elif mode == 'AVG':
-            mode == 'AVERAGE'
+        if mode == 'IN': #FAN_IN
+            mode = 0
+        elif mode == 'OUT': #FAN_OUT
+            mode = 1
+        elif mode == 'AVG': #AVERAGE
+            mode == 2
         init = {'type': type, 'variance_norm': mode}
     elif type == 'msra': # delving deep into rectifiers(MSRA) initializer
         mode = get_value('mode', default='IN')
         if mode == 'IN':
-            mode = 'FAN_IN'
+            mode = 0
         elif mode == 'OUT':
-            mode = 'FAN_OUT'
+            mode = 1
         elif mode == 'AVG':
-            mode == 'AVERAGE'
+            mode == 2
         init = {'type': type, 'variance_norm': mode}
     elif type == 'bilinear': # bilinear initializer
         init = {'type': type}

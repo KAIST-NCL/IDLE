@@ -27,7 +27,7 @@ class op_tf_multi_cells(LayerOperation):
             raise Exception('[DLMDL ERROR]: {0} in {1} layer must be declared.'.format('num_cells', self.name))
 
         # get optional attr
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
         # TODO: tmp
         if scope is None:
             scope = self.name

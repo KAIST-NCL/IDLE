@@ -32,6 +32,10 @@ class op_tf_sigmoidcrossentropyloss(LayerOperation):
         def apiConstructor():
             sigmoid_cross_entropy_with_logits = tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=logits)
             loss = tf.reduce_mean(sigmoid_cross_entropy_with_logits)
+            reg_losses = tf.losses.get_regularization_losses()
+            if len(reg_losses):
+                # TODO scope must contained
+                loss = loss + tf.add_n(reg_losses)
 
             # set output
             self.set_output('output', loss)

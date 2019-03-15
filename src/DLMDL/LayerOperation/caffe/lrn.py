@@ -28,8 +28,8 @@ class op_caffe_lrn(LayerOperation):
             engine_idx = 1
         elif engine == 'CUDNN':
             engine_idx = 2
-        else: #TODO: error handling
-            pass
+        else:  # TODO: error handling: 'None' case
+            engine_idx = 0
 
         if norm_region == 'ACROSS_CHANNELS':
             norm_region_idx = 0

@@ -26,6 +26,7 @@ class op_tf_prelu(LayerOperation):
         initializer = self.get_attr('initializer', default={'weight': {}, 'bias': {}})  # default will set later
         regularizer = self.get_attr('regularizer', default={})  # default will set later
         ch_shared = self.get_attr('channel_shared', default=False)
+        scope = self.get_attr('scope', default='default')
 
         # get worker info: worker num, device type, device num
         device = self.get_attr('device')
@@ -36,7 +37,7 @@ class op_tf_prelu(LayerOperation):
         def apiConstructor():
             # get weight for prelu
             alpha_init = get_initializer(initializer.get('weight'), is_bias=False)
-            alpha_reg = get_regularizer(regularizer, is_bias=False)
+            alpha_reg = get_regularizer(regularizer, scope, is_bias=False)
 
             #WARNINIG: constraint of weight is always None
             prelu = tf.keras.layers.PReLU(input_, alpha_initializer=alpha_init,

@@ -39,14 +39,15 @@ class op_caffe_jpeg_input(LayerOperation):
         # Image Data for training dataset
         # Read and parse the source directory
         # WARNING: uncomment when gives to UNINFO - twkim
-        with open(label_path, 'r') as f:
-            lines = f.readlines()
-        new_lines = []
-        for line in lines:
-            new_lines.append('/'+line.split()[0]+'.'+file_format + ' ' + line.split()[1]+'\n')
-        with open(label_path.split('.')[0]+'_caffelist.txt', 'w') as f:
-            f.writelines(new_lines)
-            f.close()
+
+        #with open(label_path, 'r') as f:
+        #    lines = f.readlines()
+        #new_lines = []
+        #for line in lines:
+        #    new_lines.append('/'+line.split()[0]+'.'+file_format + ' ' + line.split()[1]+'\n')
+        #with open(label_path.split('.')[0]+'_caffelist.txt', 'w') as f:
+        #    f.writelines(new_lines)
+        #    f.close()
 
         # Image Data layer setting
         image, label = L.ImageData(name=self.name,
@@ -64,14 +65,14 @@ class op_caffe_jpeg_input(LayerOperation):
         if test_data_path is not None:
             # Read and parse the source directory
             # WARNING: uncomment when gives to UNINFO - twkim
-            with open(test_label_path, 'r') as f:
-                lines = f.readlines()
-            new_lines = []
-            for line in lines:
-                new_lines.append('/' + line.split()[0] + '.' + file_format + ' ' + line.split()[1] + '\n')
-            with open(test_label_path.split('.')[0] + '_caffelist.txt', 'w') as f:
-                f.writelines(new_lines)
-                f.close()
+            #with open(test_label_path, 'r') as f:
+            #    lines = f.readlines()
+            #new_lines = []
+            #for line in lines:
+            #    new_lines.append('/' + line.split()[0] + '.' + file_format + ' ' + line.split()[1] + '\n')
+            #with open(test_label_path.split('.')[0] + '_caffelist.txt', 'w') as f:
+            #    f.writelines(new_lines)
+            #    f.close()
 
             # Test image data layer setting
             temp_image, temp_label = L.ImageData(name=self.name,

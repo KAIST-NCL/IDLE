@@ -26,7 +26,7 @@ class op_tf_eltwise(LayerOperation):
             raise Exception('[DLMDL ERROR]: {0} in {1} layer must be declared.'.format('op', self.name))
         # optional field
         scale = float(self.get_attr('scale', default=1.0))
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
         # TODO: tmp
         if scope is None:
             scope = self.name

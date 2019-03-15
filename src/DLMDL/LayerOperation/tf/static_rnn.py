@@ -26,7 +26,7 @@ class op_tf_static_rnn(LayerOperation):
         # optional field
         init = self.get_attr('initial_state', default=None)
         length = self.get_attr('length', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
         # TODO: tmp
         if scope is None:
             scope = self.name

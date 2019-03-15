@@ -26,7 +26,7 @@ class op_tf_rnn(LayerOperation):
         # get attr
         # optional field
         activation = self.get_attr('activation', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
         # TODO: tmp
         if scope is None:
             scope = self.name

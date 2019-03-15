@@ -12,7 +12,6 @@ class op_caffe_relu(LayerOperation):
         # get input
         input_ = self.get_input('input')
         indim = self.get_dimension('input')
-        print(indim) # twtest
 
         # get attr
         # optional field
@@ -25,8 +24,8 @@ class op_caffe_relu(LayerOperation):
             engine_idx = 1
         elif engine == 'CUDNN':
             engine_idx = 2
-        else: #TODO: error handling
-            pass
+        else:  # TODO: error handling: 'None' case
+            engine_idx = 0
 
         relu = L.ReLU(input_, name=self.name, negative_slope=slope, engine=engine_idx)
 

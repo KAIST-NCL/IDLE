@@ -76,5 +76,3 @@ class DLNetwork(object):
         #currently supported input types
         #twkim-test
         return [layer for layer in self.layers.values() if re.search('_input', layer.type)]
-        #input_types = ['jpeg_input', 'mnist_input', 'ptb_input', 'galucoma_input']
-        #return [layer for layer in self.layers.values() if layer.type in input_types]

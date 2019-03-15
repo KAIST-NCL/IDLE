@@ -31,7 +31,7 @@ class op_tf_adagrad(LayerOperation):
         init_accum = float(self.get_attr('beta1', default=0.1))
         lr_scheduler = self.get_attr('lr_scheduler', default={}) # default will set later
         clip_grad = self.get_attr('clip_grad', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
 
         # get worker info: worker num, device type, device num
         device = self.get_attr('device')
@@ -55,7 +55,9 @@ class op_tf_adagrad(LayerOperation):
                 clipped_grads = [(tf.clip_by_value(grad, -1.0*clip_grad, 1.0*clip_grad), var) for grad, var in grads]
                 train_op = adagrad.apply_gradients(clipped_grads, global_step=global_step)
             else:
-                train_op = adagrad.minimize(loss, global_step=global_step, var_list=opt_vars)
+                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                with tf.control_dependencies(update_ops):
+                    train_op = adagrad.minimize(loss, global_step=global_step, var_list=opt_vars)
 
             # set output
             self.set_output('output', train_op)

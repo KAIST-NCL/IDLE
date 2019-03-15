@@ -20,9 +20,9 @@ class op_tf_mnist_input(LayerOperation):
 
         # get attr
         # optional field
-        num_steps = self.get_attr('num_steps', default=False)
+        num_steps = self.get_attr('num_steps', default=None)
         num_input = 28
-        hidden_size = self.get_attr('hidden_size', default=False)
+        hidden_size = self.get_attr('hidden_size', default=None)
         num_class = 10 #fixed
 
         # set attribute to learning option to be used in tf_adaptor.py
@@ -49,8 +49,9 @@ class op_tf_mnist_input(LayerOperation):
                 images_placeholder = tf.placeholder(tf.float32, shape=[None, num_steps, num_input])
                 labels_placeholder = tf.placeholder(tf.int64 , shape=[None, num_class])
             else:
-                images_placeholder = tf.placeholder(tf.float32, shape=(None, 28, 28))
-                labels_placeholder = tf.placeholder(tf.int64, shape=(None, num_class))
+                images_placeholder = tf.placeholder(tf.float32, shape=[None, 28, 28, 1])
+                labels_placeholder = tf.placeholder(tf.int64, shape=[None, num_class])
+
             # get output dimension
             outdim = list(images_placeholder.get_shape()[i].value for i in xrange(len(images_placeholder.get_shape())))
 

@@ -29,23 +29,26 @@ class op_caffe_fc(LayerOperation):
         # get weight for convolution
         weight_init = get_initializer(initializer.get('weight'), is_bias=False)
         weight_reg, weight_reg_type = get_regularizer(regularizer, is_bias=False)
-
+        decay_mul = [weight_reg]
         # if bias_term is True, add bias term to convolution output
         if bias_term:
             bias_init = get_initializer(initializer.get('bias'), is_bias=True)
             bias_reg, bias_reg_type = get_regularizer(regularizer, is_bias=True)
+            decay_mul.append(bias_reg)
+        else:
+            bias_init = {}
 
         # check regularizer type
         tmp_reg = learning_option.get('caffe_reg_type')
         if tmp_reg is None:
             learning_option['caffe_reg_type'] = weight_reg_type
         else:
-            if tmp_reg != weight_reg_type or tmp_reg != bias_reg_type:
+            if tmp_reg != weight_reg_type:
                 raise Exception('[DLMDL ERROR]: In caffe, regularizer type of all layers must be equal')
 
         fc = L.InnerProduct(input_, name=self.name, num_output=num_output,
                             weight_filler=weight_init, bias_filler=bias_init,
-                            param=[weight_reg, bias_reg])
+                            param=decay_mul)
 
         outdim = [indim[0], num_output]
 

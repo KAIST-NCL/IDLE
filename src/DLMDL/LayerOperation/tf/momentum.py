@@ -22,17 +22,19 @@ class op_tf_momentum(LayerOperation):
 
         # get attr
         # required field
-        lr = float(self.get_attr('lr', default=None))
+        lr = self.get_attr('lr', default=None)
         if lr is None:
             raise Exception('[DLMDL ERROR]: {0} in {1} layer must be declared.'.format('lr', self.name))
-        mom = float(self.get_attr('momentum', default=None))
+        lr = float(lr)
+        mom = self.get_attr('momentum', default=None)
         if mom is None:
             raise Exception('[DLMDL ERROR]: {0} in {1} layer must be declared.'.format('momentum', self.name))
+        mom = float(mom)
 
         # optional field
         lr_scheduler = self.get_attr('lr_scheduler', default={}) # default will set later
         clip_grad = self.get_attr('clip_grad', default=None)
-        scope = self.get_attr('scope', default=None)
+        scope = self.get_attr('scope', default='default')
 
         # get worker info: worker num, device type, device num
         device = self.get_attr('device')
@@ -55,7 +57,9 @@ class op_tf_momentum(LayerOperation):
                 clipped_grads = [(tf.clip_by_value(grad, -1.0*clip_grad, 1.0*clip_grad), var) for grad, var in grads]
                 train_op = momentum.apply_gradients(clipped_grads, global_step=global_step)
             else:
-                train_op = momentum.minimize(loss, global_step=global_step, var_list=opt_vars)
+                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                with tf.control_dependencies(update_ops):
+                    train_op = momentum.minimize(loss, global_step=global_step, var_list=opt_vars)
 
             # set output
             self.set_output('output', train_op)
