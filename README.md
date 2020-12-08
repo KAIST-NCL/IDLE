@@ -24,7 +24,7 @@ Python 2.7
 $ sudo apt-get install python-pip python-dev 
 ```
 
-Liberaries
+Liberaries.
 ```bash
 $ sudo apt-get update
 $ sudo apt-get install libprotobuf-dev libleveldb-dev libsnappy-dev libopencv-dev libhdf5-serial-dev protobuf-compiler
@@ -33,7 +33,7 @@ $ sudo apt-get install --no-install-recommends libboost-all-dev
 
 Install CUDA : * [CUDA 9.0](https://developer.nvidia.com/cuda-downloads)
 
-BLAS
+BLAS.
 ```bash
 $ sudo apt-get install libatlas-base-dev
 ```
@@ -138,7 +138,7 @@ $ cat $destination/id_rsa.pub >> ~/.ssh/authorized_keys
 
 #### Install IDLE
 
-Install IDLE on your environment
+Install IDLE on your environment.
 ```bash
 $ cd {working directory}
 $ git clone https://github.com/KAIST-NCL/IDLE.git
@@ -153,7 +153,7 @@ Sample DL-MDL files are wtored under /model folder.
 all files with `dlmdl` extension shows the examples.
 
 ##### Edit sample DLMDL file
-Edit the sample files for your environment
+Edit the sample files for your environment.
 
 ##### Running IDLE 
 
